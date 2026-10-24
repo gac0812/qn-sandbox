@@ -27,8 +27,12 @@ cleanup() {
     [ "$SSH_DIR_CREATED" = "1" ] && rmdir "$HOME/.ssh" 2>/dev/null
     return 0
 }
-trap cleanup EXIT INT TERM
-[ "${KEEP_TMP:-0}" = "1" ] && trap - EXIT
+trap cleanup EXIT
+trap 'cleanup; exit 130' INT TERM
+# KEEP_TMP=1：三个 trap 全清，保留现场（含探针输出与假密钥文件）。
+if [ "${KEEP_TMP:-0}" = "1" ]; then
+    trap - EXIT INT TERM
+fi
 
 record() { # status case detail
     RESULTS+=("$1|$2|$3")
@@ -73,31 +77,34 @@ else
 fi
 
 # ---------- U2: 凭证不进 env（父进程哨兵不得出现在沙箱 env） ----------
-# 探针自证：env 输出落盘且非空，才允许判定"未泄漏"（防空转 PASS）。
+# 判定门 = 探测命令退出码：ENV_RC=0 才允许判"未泄漏"（stderr 不进证据文件，
+# 错误文本非空不能冒充探测成功）。门失败一律 FAIL inconclusive（fail-closed）。
 export SENTINEL_VALUE="$SENTINEL"
-nono_shell "env > '$TMPROOT/env.out' 2>&1; echo ENV_RC=\$?" >/dev/null 2>&1
+U2_SESS="$(nono_shell "env > '$TMPROOT/env.out'; echo ENV_RC=\$?")"
 unset SENTINEL_VALUE
-if [ ! -s "$TMPROOT/env.out" ]; then
-    record FAIL U2 "probe inconclusive: env produced no output inside sandbox"
+U2_ENVRC="$(printf '%s' "$U2_SESS" | grep -oE 'ENV_RC=[0-9]+' | grep -oE '[0-9]+')"
+if [ "${U2_ENVRC:-none}" != "0" ]; then
+    record FAIL U2 "probe inconclusive: env rc=${U2_ENVRC:-none} inside sandbox (no vacuous pass)"
 elif grep -Fq "SENTINEL_VALUE=$SENTINEL" "$TMPROOT/env.out"; then
     record FAIL U2 "parent env sentinel LEAKS into sandbox env — violates guardrails invariant (credentials never enter sandbox env); qn-nono must scrub env at every spawn site (#27 env hygiene is a hard M1 prerequisite)"
 else
-    record PASS U2 "parent env sentinel does not leak into sandbox (probe self-verified)"
+    record PASS U2 "parent env sentinel does not leak into sandbox (probe rc=0 self-verified)"
 fi
 
 # ---------- U3: 凭证不进 argv（哨兵不得出现在沙箱内进程命令行） ----------
-# 探针自证：ps 输出落盘且非空才允许判定（防空转 PASS）；
-# 匹配含 [V] 括号技巧避免自匹配（ps 会看到 grep/sh 自己的 argv）。
+# 判定门 = PS_RC=0（ps 正常必有输出行，[ -s ] 仅作副证）；匹配用 [V] 括号技巧
+# 避免自匹配。探测失败一律 FAIL inconclusive；仅"宿主无 ps"记 SKIP。
 if command -v ps >/dev/null 2>&1; then
     export SENTINEL_VALUE="$SENTINEL"
-    nono_shell "ps -eww -o args > '$TMPROOT/ps.out' 2>&1; echo PS_RC=\$?" >/dev/null 2>&1
+    U3_SESS="$(nono_shell "ps -eww -o args > '$TMPROOT/ps.out'; echo PS_RC=\$?")"
     unset SENTINEL_VALUE
-    if [ ! -s "$TMPROOT/ps.out" ]; then
-        record SKIP U3 "ps failed or produced no output inside sandbox (no vacuous pass)"
+    U3_PSRC="$(printf '%s' "$U3_SESS" | grep -oE 'PS_RC=[0-9]+' | grep -oE '[0-9]+')"
+    if [ "${U3_PSRC:-none}" != "0" ]; then
+        record FAIL U3 "probe inconclusive: ps rc=${U3_PSRC:-none} inside sandbox (no vacuous pass)"
     elif grep -Eq "SENTINEL_[V]ALUE|$SENTINEL" "$TMPROOT/ps.out"; then
         record FAIL U3 "sentinel visible in sandbox argv scan"
     else
-        record PASS U3 "sentinel not visible in sandbox process argv (probe self-verified)"
+        record PASS U3 "sentinel not visible in sandbox process argv (probe rc=0 self-verified)"
     fi
 else
     record SKIP U3 "ps not available in sandbox environment"
@@ -111,7 +118,9 @@ U4_RC="$(printf '%s' "$U4_OUT" | grep -oE 'CURL_RC=[0-9]+' | grep -oE '[0-9]+')"
 U4_RC="${U4_RC:-none}"
 case "$U4_RC" in
     0)
-        if [ "$ABI_V" != "?" ] && [ "$ABI_V" -lt 4 ]; then
+        if [ "$ABI_V" = "?" ]; then
+            record FAIL U4 "outbound ALLOWED with unknown Landlock ABI (probe parse failed) — manual triage required"
+        elif [ "$ABI_V" -lt 4 ]; then
             record GAP U4 "outbound ALLOWED on Landlock V$ABI_V — KNOWN-GAP: kernel <6.7 cannot enforce net default-deny (spike #16; decision #17); expected on stock WSL2"
         else
             record FAIL U4 "outbound ALLOWED despite Landlock V${ABI_V} — regression of net default-deny"

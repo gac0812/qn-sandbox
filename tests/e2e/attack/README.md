@@ -22,10 +22,12 @@ SKIP 不致败（依赖未建成组件）。
 
 ## 断言纪律（本套件的信任根基）
 
-每个"未观察到泄漏"型 PASS **必须先证明探测命令自身成功执行**（输出落盘且非空），
-否则只证明"没看到"，不证明"被防住"。探测不可用 → SKIP，绝不记 PASS。
-U4 同理：curl rc=0 → ALLOWED；rc∈{6,7}（spike① T4/T9 实测的强制拒绝形态）→ PASS；
-127（无 curl）/28（超时）等 → inconclusive FAIL（人工判读）。
+每个"未观察到泄漏"型 PASS **必须以探测命令的退出码 = 0 为判定门**（stderr 不进
+证据文件——错误文本非空不能冒充探测成功），否则只证明"没看到"，不证明"被防住"。
+探测命令失败一律 **FAIL inconclusive**（fail-closed）；仅"宿主侧探测工具缺失"记
+SKIP。U4 同理：curl rc=0 → ALLOWED（按 ABI 三分支：未知 → manual triage、V<4 →
+GAP、否则 regression）；rc∈{6,7}（spike① T4/T9 实测的强制拒绝形态）→ PASS；
+127（无 curl）/28（超时）等 → inconclusive FAIL。
 
 ## 用例 ↔ 不变式映射
 
