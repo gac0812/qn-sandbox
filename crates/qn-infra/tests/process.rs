@@ -1,13 +1,13 @@
-//! qn-infra::process 集成测试。
+//! `qn-infra::process` 集成测试。
 //!
 //! 测试用宿主 shell（Windows `cmd /c`、Unix `sh -c`）构造子进程——
-//! 这是测试脚手架；生产代码经 CmdSpec 的 argv 数组约束无 shell 路径。
+//! 这是测试脚手架；生产代码经 `CmdSpec` 的 argv 数组约束无 shell 路径。
 #![allow(clippy::unwrap_used, clippy::expect_used)] // spec 02 §7：测试允许 unwrap/expect
 
 use std::time::Duration;
 
-use qn_infra::process::{self, CmdSpec};
 use qn_infra::Error;
+use qn_infra::process::{self, CmdSpec};
 use tokio_util::sync::CancellationToken;
 
 /// 平台相关的“跑一条 shell 片段”脚手架（仅测试）。
@@ -21,7 +21,7 @@ fn shell(snippet: &str) -> CmdSpec {
 
 #[tokio::test]
 async fn it_captures_stdout_and_success() {
-    let spec = shell(if cfg!(windows) { "echo hello" } else { "echo hello" });
+    let spec = shell("echo hello");
     let out = process::run(&spec).await.expect("echo must run");
     assert!(out.success, "echo should exit 0");
     assert_eq!(out.exit_code, Some(0));
@@ -43,7 +43,9 @@ async fn it_reports_nonzero_exit_code_in_outcome() {
 #[tokio::test]
 async fn it_maps_nonzero_to_failed_error_with_actionable_message() {
     let spec = shell("exit 7").label("probe-seven");
-    let err = process::run_checked(&spec).await.expect_err("exit 7 must be Err");
+    let err = process::run_checked(&spec)
+        .await
+        .expect_err("exit 7 must be Err");
     match err {
         Error::Failed {
             label,
@@ -65,7 +67,9 @@ async fn it_times_out_and_kills_the_child() {
     } else {
         "sleep 30"
     };
-    let spec = shell(snippet).timeout(Duration::from_millis(400)).label("hang");
+    let spec = shell(snippet)
+        .timeout(Duration::from_millis(400))
+        .label("hang");
     let started = std::time::Instant::now();
     let err = process::run(&spec).await.expect_err("must time out");
     match err {
@@ -91,10 +95,14 @@ async fn it_cancels_immediately_via_token() {
     } else {
         "sleep 30"
     };
-    let spec = shell(snippet).timeout(Duration::from_secs(60)).label("cancellable");
+    let spec = shell(snippet)
+        .timeout(Duration::from_secs(60))
+        .label("cancellable");
     let cancel = CancellationToken::new();
+    let cancel_inside = cancel.clone();
     let spec_clone = spec.clone();
-    let handle = tokio::spawn(async move { process::run_with_cancel(&spec_clone, cancel.clone()).await });
+    let handle =
+        tokio::spawn(async move { process::run_with_cancel(&spec_clone, cancel_inside).await });
 
     tokio::time::sleep(Duration::from_millis(300)).await;
     cancel.cancel();
@@ -102,7 +110,7 @@ async fn it_cancels_immediately_via_token() {
     let result = handle.await.expect("join must succeed");
     let err = result.expect_err("must be cancelled");
     assert!(
-        matches!(err, Error::Cancelled { label } if label == "cancellable"),
+        matches!(&err, Error::Cancelled { label } if label == "cancellable"),
         "expected Error::Cancelled, got: {err:?}"
     );
     assert!(

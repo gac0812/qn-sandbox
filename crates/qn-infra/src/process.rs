@@ -145,6 +145,10 @@ impl CmdOutcome {
     /// 非零退出码转 [`Error::Failed`]；成功返回 `Ok(self)`。
     ///
     /// 退出码为 `None`（被信号杀死）同样视为失败，code 记为 `-1`。
+    ///
+    /// # Errors
+    ///
+    /// 命令失败（非零退出码或被信号杀死）时返回 [`Error::Failed`]。
     pub fn check(self, label: &str) -> Result<Self, Error> {
         if self.success {
             return Ok(self);
@@ -163,7 +167,10 @@ fn summarize(stderr: &str) -> String {
     if bytes.len() <= STDERR_SUMMARY_BYTES {
         stderr.to_owned()
     } else {
-        format!("{}…[truncated]", String::from_utf8_lossy(&bytes[..STDERR_SUMMARY_BYTES]))
+        format!(
+            "{}…[truncated]",
+            String::from_utf8_lossy(&bytes[..STDERR_SUMMARY_BYTES])
+        )
     }
 }
 
@@ -226,12 +233,10 @@ async fn run_inner(spec: &CmdSpec, cancel: Option<CancellationToken>) -> Result<
         "spawning external command"
     );
 
-    let mut child = command
-        .spawn()
-        .map_err(|source| Error::Spawn {
-            program: spec.program.clone(),
-            source,
-        })?;
+    let mut child = command.spawn().map_err(|source| Error::Spawn {
+        program: spec.program.clone(),
+        source,
+    })?;
 
     let (stdout_rx, stderr_rx) = spawn_readers(&mut child, max_output);
     let started = std::time::Instant::now();
@@ -241,14 +246,14 @@ async fn run_inner(spec: &CmdSpec, cancel: Option<CancellationToken>) -> Result<
             program: spec.program.clone(),
             source,
         })?,
-        _ = tokio::time::sleep(timeout) => {
+        () = tokio::time::sleep(timeout) => {
             let _ = child.start_kill();
             return Err(Error::TimedOut {
                 label,
                 timeout_secs: timeout.as_secs(),
             });
         }
-        _ = async {
+        () = async {
             match cancel {
                 Some(token) => token.cancelled().await,
                 None => std::future::pending().await,
@@ -277,7 +282,7 @@ async fn run_inner(spec: &CmdSpec, cancel: Option<CancellationToken>) -> Result<
         label = %label,
         exit_code = outcome.exit_code,
         success = outcome.success,
-        duration_ms = duration.as_millis() as u64,
+        duration_ms = u64::try_from(duration.as_millis()).unwrap_or(u64::MAX),
         stdout_truncated = outcome.stdout_truncated,
         stderr_truncated = outcome.stderr_truncated,
         "external command finished"
@@ -294,7 +299,13 @@ async fn run_inner(spec: &CmdSpec, cancel: Option<CancellationToken>) -> Result<
 
 type ReaderResult = (Vec<u8>, bool);
 
-fn spawn_readers(child: &mut Child, max_output: usize) -> (tokio::task::JoinHandle<ReaderResult>, tokio::task::JoinHandle<ReaderResult>) {
+fn spawn_readers(
+    child: &mut Child,
+    max_output: usize,
+) -> (
+    tokio::task::JoinHandle<ReaderResult>,
+    tokio::task::JoinHandle<ReaderResult>,
+) {
     // SAFETY-free: take() 把管道所有权移给读任务，管道在子进程退出后关闭，读任务随之结束。
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
@@ -314,23 +325,18 @@ async fn read_bounded<R: tokio::io::AsyncRead + Unpin>(
     let mut buf = Vec::new();
     let mut chunk = [0u8; 8192];
     let mut truncated = false;
+    // 有界存储但读到 EOF：超限部分丢弃而非停读。
+    // 提前停读会关闭管道读端，把还在写的子进程送上 SIGPIPE（Linux 实测）。
     loop {
-        let room = max.saturating_sub(buf.len());
-        if room == 0 {
-            // 已达上限：再读一字节以确认是否真的还有更多输出。
-            let mut probe = [0u8; 1];
-            match tokio::io::AsyncReadExt::read(&mut reader, &mut probe).await {
-                Ok(0) | Err(_) => break,
-                Ok(_) => {
+        match tokio::io::AsyncReadExt::read(&mut reader, &mut chunk).await {
+            Ok(0) | Err(_) => break,
+            Ok(n) => {
+                let keep = (max - buf.len()).min(n);
+                buf.extend_from_slice(&chunk[..keep]);
+                if keep < n {
                     truncated = true;
-                    break;
                 }
             }
-        }
-        let want = chunk.len().min(room);
-        match tokio::io::AsyncReadExt::read(&mut reader, &mut chunk[..want]).await {
-            Ok(0) | Err(_) => break,
-            Ok(n) => buf.extend_from_slice(&chunk[..n]),
         }
     }
     (buf, truncated)
