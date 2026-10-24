@@ -9,7 +9,7 @@
 //! 计划可单测，执行全部经 `qn_infra::process`（R1/R3）。
 //! 导出/导入/安装是分钟级操作（发行版 GB 级 tar），超时给 10 分钟量级。
 
-use std::path::PathBuf;
+use camino::Utf8PathBuf;
 use std::time::Duration;
 
 use qn_infra::process::{self, CmdSpec};
@@ -68,9 +68,9 @@ pub struct ProvisionPlan {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProvisionInput {
     /// 导出 tar 的临时路径。
-    pub tar_path: PathBuf,
+    pub tar_path: Utf8PathBuf,
     /// 受管发行版安装目录（vhdx 落位处）。
-    pub install_dir: PathBuf,
+    pub install_dir: Utf8PathBuf,
 }
 
 /// 生成供给计划（纯函数）。
@@ -103,11 +103,7 @@ pub fn plan_provision(
     steps.push(PlannedStep {
         label: format!("export seed {SEED_DISTRO_NAME} to tar"),
         spec: CmdSpec::new("wsl")
-            .args([
-                "--export",
-                SEED_DISTRO_NAME,
-                &input.tar_path.to_string_lossy(),
-            ])
+            .args(["--export", SEED_DISTRO_NAME, input.tar_path.as_str()])
             .timeout(LONG_STEP_TIMEOUT)
             .label("wsl --export seed"),
     });
@@ -117,8 +113,8 @@ pub fn plan_provision(
             .args([
                 "--import",
                 MANAGED_DISTRO_NAME,
-                &input.install_dir.to_string_lossy(),
-                &input.tar_path.to_string_lossy(),
+                input.install_dir.as_str(),
+                input.tar_path.as_str(),
             ])
             .timeout(LONG_STEP_TIMEOUT)
             .label("wsl --import managed"),
@@ -155,6 +151,14 @@ pub enum ProvisionError {
         label: String,
         /// 失败摘要（退出码/输出节选，无敏感内容）。
         detail: String,
+    },
+    /// 无法解析 qn home（默认布局的前提）。
+    /// 行动指引：检查 `QN_HOME` / 平台目录（`qn doctor` 的配置诊断）。
+    #[error("cannot resolve qn home for the default provisioning layout: {source}")]
+    LayoutUnavailable {
+        /// qn-config 的解析错误。
+        #[source]
+        source: qn_config::Error,
     },
 }
 
@@ -215,24 +219,34 @@ pub async fn ensure_present(input: &ProvisionInput) -> Result<ProvisionOutcome, 
 
 async fn execute(plan: &ProvisionPlan) -> Result<(), ProvisionError> {
     for step in &plan.steps {
-        // wsl.exe 的错误面走 stdout 且是 UTF-16——stderr 摘要抓不到真实原因，
-        // 失败时把两条流都带进 detail（诊断优先；输出无敏感内容）。
-        if let Err(err) = process::run_checked(&step.spec).await {
-            let mut detail = err.to_string();
-            if let qn_infra::Error::Failed { .. } = &err {
-                if let Ok(outcome) = process::run(&step.spec).await {
-                    let stdout = crate::decode::decode_wsl_output(&outcome.stdout_raw);
-                    let first = stdout.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
-                    if !first.is_empty() {
-                        detail.push_str("; stdout: ");
-                        detail.push_str(first.trim());
-                    }
-                }
+        // 一次执行、同次取流（与 health::distro_exec 同款）：wsl.exe 的错误面走
+        // stdout 且是 UTF-16——绝不重跑命令取诊断（副作用风险）。
+        match process::run(&step.spec).await {
+            Err(err) => {
+                return Err(ProvisionError::StepFailed {
+                    label: step.label.clone(),
+                    detail: err.to_string(),
+                });
             }
-            return Err(ProvisionError::StepFailed {
-                label: step.label.clone(),
-                detail,
-            });
+            Ok(outcome) if outcome.success => {}
+            Ok(outcome) => {
+                let stdout = crate::decode::decode_wsl_output(&outcome.stdout_raw);
+                let first = stdout
+                    .lines()
+                    .find(|l| !l.trim().is_empty())
+                    .unwrap_or("")
+                    .trim();
+                let detail = match outcome.exit_code {
+                    Some(code) if first.is_empty() => format!("exit code {code}"),
+                    Some(code) => format!("exit code {code}; stdout: {first}"),
+                    None if first.is_empty() => "terminated without an exit code".to_owned(),
+                    None => format!("terminated without an exit code; stdout: {first}"),
+                };
+                return Err(ProvisionError::StepFailed {
+                    label: step.label.clone(),
+                    detail,
+                });
+            }
         }
     }
     Ok(())
@@ -241,11 +255,19 @@ async fn execute(plan: &ProvisionPlan) -> Result<(), ProvisionError> {
 /// 默认布局：受管发行版安装目录 `<qn-home>/wsl/<name>/`、tar 在系统临时目录。
 ///
 /// # Errors
-/// qn home 解析失败（见 qn-config）时返回 IO 错误摘要。
-pub fn default_layout() -> Result<ProvisionInput, String> {
-    let paths = qn_config::paths::QnPaths::resolve().map_err(|err| err.to_string())?;
-    let install_dir: PathBuf = paths.root.join("wsl").join(MANAGED_DISTRO_NAME).into();
-    let tar_path = std::env::temp_dir().join(format!("{MANAGED_DISTRO_NAME}-seed.tar"));
+/// qn home 解析失败（见 qn-config）时返回 [`ProvisionError::LayoutUnavailable`]；
+/// 系统临时目录非 UTF-8（病态环境）时返回 [`ProvisionError::StepFailed`]。
+pub fn default_layout() -> Result<ProvisionInput, ProvisionError> {
+    let paths = qn_config::paths::QnPaths::resolve()
+        .map_err(|source| ProvisionError::LayoutUnavailable { source })?;
+    let install_dir = paths.root.join("wsl").join(MANAGED_DISTRO_NAME);
+    let tar_path: Utf8PathBuf = std::env::temp_dir()
+        .join(format!("{MANAGED_DISTRO_NAME}-seed.tar"))
+        .try_into()
+        .map_err(|_| ProvisionError::StepFailed {
+            label: "resolve tar path".to_owned(),
+            detail: "temp dir is not valid UTF-8".to_owned(),
+        })?;
     Ok(ProvisionInput {
         tar_path,
         install_dir,

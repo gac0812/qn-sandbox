@@ -2,11 +2,12 @@
 #![allow(clippy::unwrap_used)]
 
 use super::*;
+use camino::Utf8PathBuf;
 
 fn input() -> ProvisionInput {
     ProvisionInput {
-        tar_path: PathBuf::from(r"C:\tmp\seed.tar"),
-        install_dir: PathBuf::from(r"C:\qn\wsl\qn-sandbox"),
+        tar_path: Utf8PathBuf::from(r"C:\tmp\seed.tar"),
+        install_dir: Utf8PathBuf::from(r"C:\qn\wsl\qn-sandbox"),
     }
 }
 

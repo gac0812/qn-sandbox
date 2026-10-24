@@ -9,6 +9,7 @@ description = "Windows WSL2 provisioning adapter for qn-sandbox (health probes f
 [dependencies]
 qn-config = { path = "../qn-config", version = "0.1.0" }
 qn-infra = { path = "../qn-infra", version = "0.1.0" }
+camino = "1"
 thiserror = "2"
 
 [dev-dependencies]

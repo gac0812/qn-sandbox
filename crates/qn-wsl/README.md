@@ -22,6 +22,11 @@ Windows-only：crate 根整体 cfg 门，Linux/macOS 只编译不执行。
 
 ## 供给事实（distro，实测 2026-10-25）
 
+已知限制：种子=Missing 的四步链（install→export→import→unregister）**未实证**
+（本机种子已存在，走的是两步链）；`wsl -l -v` 列表漏报已存在种子时 install 行为
+未验证（按现有实现会走 install 路径——首列 ASCII 匹配，漏报概率极低）；
+`ensure_present` 单飞契约由调用方保证（并发会在固定 tar 路径互踩）。
+
 - `wsl --import` 要求安装目录**已存在**（"系统找不到指定的路径"），ensure_present 负责创建
   install_dir 与 tar 父目录；导出 tar 用后即删（安装产物是发行版本身）。
 - wsl 错误面走 stdout 且为 UTF-16——StepFailed 的 detail 携带解码后的 stdout 首行。
@@ -39,4 +44,4 @@ cargo run -p qn-wsl --example dump_probes
 ## 非目标
 
 - doctor 的 CLI/UI 呈现（qn-cli/qn-ui，经 qn-bootstrap 桥接——消费方案在 #44/#66 开工前定）；
-- 供给动作本身；跨平台行为。
+- 发行版内 nono 引导（bootstrap）、内核升级（kernel）——后续 issue；跨平台行为。

@@ -682,6 +682,7 @@ version = "0.1.0"
 name = "qn-wsl"
 version = "0.1.0"
 dependencies = [
+ "camino",
  "qn-config",
  "qn-infra",
  "thiserror",
