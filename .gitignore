@@ -1,0 +1,31 @@
+# Local and internal material
+.DS_Store
+材料/
+tmp/
+*.log
+.vscode/
+.idea/
+
+# Secrets and host configuration
+.env
+.env.*
+!.env.example
+secrets/
+credentials/
+**/auth.json
+**/.credentials.json
+*.pem
+*.key
+*.p12
+*.mobileprovision
+
+# Build and dependency output
+node_modules/
+dist/
+build/
+target/
+coverage/
+
+# Local PoC runtime output
+poc/**/.runtime/
+poc/**/runtime/
