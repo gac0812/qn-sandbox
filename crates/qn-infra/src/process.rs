@@ -47,7 +47,7 @@ const STDERR_SUMMARY_BYTES: usize = 512;
 /// 外部命令描述（不可变 builder）。
 ///
 /// 只接受 argv 数组与显式 env 追加，不接受 shell 字符串——这是
-/// spec 08 §5 的强制约束，类型层面不提供违规入口。
+/// spec 08 §5 的强制约束：不提供隐式 shell 解释入口。
 #[derive(Debug, Clone)]
 #[must_use = "CmdSpec is a builder; call run/run_checked on it"]
 pub struct CmdSpec {
@@ -136,9 +136,9 @@ pub struct CmdOutcome {
     pub stdout: String,
     /// stderr（有界，UTF-8 lossy）。
     pub stderr: String,
-    /// stdout 是否因超出捕获上限被截断。
+    /// stdout 是否不完整：超出捕获上限被截断，或读取中途失败。
     pub stdout_truncated: bool,
-    /// stderr 是否因超出捕获上限被截断。
+    /// stderr 是否不完整：超出捕获上限被截断，或读取中途失败。
     pub stderr_truncated: bool,
     /// 实际运行时长。
     pub duration: Duration,
