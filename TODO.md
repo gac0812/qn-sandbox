@@ -1,6 +1,9 @@
 # TODO — 工程待办
 
 > 格式遵循 AGENTS.md R8：每项有触发条件与验收标准。完成后移入「已完成」区并注明 PR 链接。
+>
+> 进度（2026-10-24）：TODO-004a 实验完成，报告见 `docs/dev-notes/spike1-wsl2-landlock.md`（PR 关联 #16）；
+> kernel 硬前置与降级档裁决在决策 issue #17，收口前 004a 保持开放。
 
 ## 待办
 
