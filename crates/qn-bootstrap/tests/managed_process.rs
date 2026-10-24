@@ -46,7 +46,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
         Some("worker") => {
             let addr = std::env::args().nth(2).ok_or("address required")?;
-            process::run_checked(&command("leaf")?.arg(addr)).await?;
+            process::run_checked(&command("leaf")?.arg(addr).label("fixture leaf")).await?;
         }
         _ => verify().await?,
     }
@@ -88,7 +88,9 @@ async fn verify_cleanup() -> Result<(), Box<dyn Error>> {
     let policy = qn_bootstrap::process_policy();
     for mode in ["cancel", "timeout", "drop"] {
         let listener = TcpListener::bind("127.0.0.1:0").await?;
-        let mut spec = command("worker")?.arg(listener.local_addr()?.to_string());
+        let mut spec = command("worker")?
+            .arg(listener.local_addr()?.to_string())
+            .max_output_bytes(4096);
         if mode == "timeout" {
             spec = spec.timeout(Duration::from_secs(5));
         }
