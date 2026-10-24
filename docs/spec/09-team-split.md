@@ -1,63 +1,60 @@
-# 09 — 三人协作分工
+# 09 — 三人协作分工（thin product on nono）
 
-状态：Draft（待三人各自认领角色） · 2026-10-24
+状态：Draft（成员 B 已认领） · 2026-10-24
 
 ## 1. 分工原则
 
-1. **按平台 + 按层切主责**：每人独占一条主路径（macOS / Windows / 架构与 API 面），避免三人改同一处代码。
-2. **每人守一条横切线**：横切线与其主责天然呼应，且互不重叠。
-3. **接口共治**：`qn-core` 的 port（trait）属于公共契约，任何变更走固定流程（§4），不允许单人拍板。
-4. **没有空窗期**：每人在自己主里程碑启动前，负责其前置依赖或技术验证（spike），保证里程碑不互相等待。
-5. 任何人不做自己代码的**唯一评审**；review 义务见 §5。
+1. 每人独占一条主路径，避免三人改同一处代码。
+2. 每人守一条横切线，互不重叠。
+3. 接口（qn-core ports）共治，变更走固定流程（§4）。
+4. 无空窗期：主里程碑启动前负责前置 spike。
+5. 任何人不做自己代码的唯一评审（§5）。
 
 ## 2. 角色总览
 
-> 认领状态：**成员 B 已认领（GitHub: [gac0812](https://github.com/gac0812)）**；成员 A / 成员 C 待认领。
-
 | | 成员 A | 成员 B | 成员 C |
 | --- | --- | --- | --- |
-| **认领（GitHub id）** | 待认领 | **gac0812** | 待认领 |
-| **主责领域** | macOS 后端 + arcbox 上游 | Windows 后端 + guest agent | 架构、API 契约、CI 质量门禁 |
-| **主要 crate** | `qn-driver-vf`、镜像体系 | `qn-driver-wsl`、`qn-agent` | `qn-core`、`qn-config`、`qn-infra`、`qn-daemon`、`qn-cli`、`qn-mcp`、SDK |
-| **横切线** | 许可合规：LICENSE/NOTICE、subtree 同步、`docs/patches/` | 安全条款（08 规范）在实现中的落实与评审 | 架构与依赖方向：R3 检查、deny ban 规则、ADR 守门 |
-| **硬件前提** | Apple Silicon Mac（必需）；Intel Mac 可先用 CI macos-13 替代 | Windows 11 物理机（或支持嵌套虚拟化的环境）+ WSL2 | 无特殊硬件；需三平台 CI runner 管理权限 |
+| **认领（GitHub id）** | 待认领 | **[gac0812](https://github.com/gac0812)** | 待认领 |
+| **主责领域** | 引擎适配 + macOS + profiles | Windows 供给链路 + 安全演示 | 控制面 + MCP gateway + SDK |
+| **主要 crate** | `qn-nono`、`profiles/`、`qn-broker`（phantom 代理包装） | `qn-wsl`、攻击演示与审计剧本 | `qn-daemon`、`qn-cli`、`qn-ui`、`qn-mcp`、`qn-gateway`、SDK |
+| **横切线** | nono 上游跟版与回馈（04 §6 锁版纪律） | 安全条款（08）落实与评审 | 架构与依赖方向守门（R3/R6、deny ban） |
+| **硬件前提** | Mac（Apple Silicon 或 Intel 均可） | Windows 11 实机 + WSL2 | 无特殊硬件 |
 
-## 3. 按里程碑的分工矩阵
+## 3. 按工作包的分工矩阵
 
-> 里程碑已按 P0/P1/P2 对齐（00 §4）：**M1 即 P0 核心**，含 MCP 网关最小切片、默认拒绝策略、审计/攻击演示与最小 Tauri 控制面。
+> 对应 00 §4：P0 = M0（骨架+spike）+ M1（macOS 安全路径）+ M2（Windows）；P1 = M3；P2 = M4。
 
 （主导 = 交付负责人；支援 = 协作并承担对应评审）
 
-| 里程碑 | 成员 A（macOS/上游） | 成员 B / gac0812（Windows/agent） | 成员 C（架构/API） |
+| 工作包 | 成员 A（引擎/macOS/profiles） | 成员 B / gac0812（Windows/安全） | 成员 C（控制面/gateway） |
 | --- | --- | --- | --- |
-| **M0 骨架** | 引入 arcbox subtree（ADR-0001 落地）；复核上游能力清单与许可 | 搭 Windows CI 矩阵（wsl --install workflow）；实现 `qn-infra::process`、文件锁、`qn-config` 平台路径 | 主导：cargo workspace、deny.toml/clippy 配置、PR/issue 模板、`qn-core` 初版（领域模型 + ports + registry）；补 ADR-0005 所需 nono 资料（与 #2 作者对接） |
-| **M1 mac 安全路径（P0）** | 主导：`qn-driver-vf` 适配层、镜像导入链路、macOS E2E 剧本 | WSL2 路线 spike（验证容器方案可行性，产出结论文档）；`qn-agent` 出口代理；主导**攻击演示与审计剧本**（安全横切线） | 定稿 ports v1 并**冻结**；`qn-cli` 初版；主导**MCP 网关最小切片**与**最小 Tauri 控制面**；对 A 的实现做 port 语义 review |
-| **M2 Intel Mac** | 主导：双架构镜像体系（`--arch`）、Intel E2E | 攻击演示剧本扩展至 Windows 预案；预研 WSL2 内嵌套 KVM 备选（只 spike 不实现，供 P2 决策） | MCP 网关切片收尾；文档与 glossary 同步 |
-| **M3 Windows** | 支援：E2E 剧本库、镜像构建脚本复用到 x86_64 | 主导：`qn-driver-wsl`（发行版编排、容器隔离、互操作桥接）、Windows E2E、代答网关 Windows 落地 | review + 按需扩展 core；陪跑安全横切评审（B 主守） |
-| **M4 统一 API 面** | 支援：VZ 侧协议适配验证 | 支援：WSL 侧协议适配验证 | 主导：`qn-daemon`、契约（proto/buf）、MCP 网关协议通用化、TS/Python SDK、gen-drift CI |
-| **M5 高级能力（P2）** | 主导：快照/恢复（VZ 能力） | 主导：资源配额、Windows 安装引导与兼容性 | 主导：契约演进、SDK/文档配套 |
+| **M0 骨架与验证** | spike ③：nono 集成形态（FFI vs 子进程）定稿；`qn-nono` 骨架与安装器锁版方案 | spike ①：WSL2 内核 ≥6.7 + Landlock 网络验证与升级路径；spike ②协测；Windows CI 矩阵；`qn-infra::process`/`qn-config` | 主导：workspace/deny/PR 模板/`qn-core` 初版（模型+ports）；spike ②：macOS nono+claude-code 实测 |
+| **M1 macOS 安全路径（P0）** | 主导：`qn-nono`（run/status/why/审计采集）、`qn-broker`（phantom 代理包装）、claude-code/codex profiles、macOS E2E | 攻击演示剧本 v1（读密钥/越权出站/env 探测全拦截留痕）；审计事件可读呈现需求 | 主导：`qn-cli`（run/audit/doctor）、`qn-ui` 最小 Tauri 壳、`qn-gateway` MCP mediation 最小版 |
+| **M2 Windows（P0 收口）** | profiles 在 WSL2 环境的兼容验证 | 主导：`qn-wsl` 供给链路（发行版/内核/nono 引导/代理打通一键化）、Windows E2E、攻击演示 Windows 版 | 控制面 Windows 适配与打包（winget/msi）；review |
+| **M3 统一 API 与生态（P1）** | profile 注册表发布流程；nono 升级回归 | Windows GA 兼容性矩阵（Win10 22H2/11 各版本） | 主导：daemon HTTP API、契约、TS/Python SDK、`qn-mcp`（沙箱即工具） |
+| **M4 高级能力（P2）** | 强隔离 VM 模式（`qn-vm`：VZ/QEMU + guest 内 nono） | 资源配额与 Windows 安装引导打磨 | 网络策略 UI、企业审计报表 |
 
 ## 4. 接口（port）变更流程
 
-ports 属于三人公共契约，变更分级：
+ports（`SandboxEngine` / `CredentialBroker` / `McpGateway`）是三人公共契约：
 
 | 变更类型 | 所需同意 | 记录 |
 | --- | --- | --- |
-| 给已有 trait 加**带默认实现**的方法 | C + 受影响的 driver 负责人 | PR 描述 |
-| 改 trait 签名 / 新增 port / 删除 port | **三人一致** | ADR |
-| driver 内部实现细节 | 该负责人 | PR |
+| 加带默认实现的方法 | C + 受影响适配器负责人 | PR 描述 |
+| 改签名 / 新增 / 删除 port | **三人一致** | 决策 issue（背景/选项≥2/结论）+ spec 同步修订 |
+| 适配器内部实现 | 该负责人 | PR |
 
-- 冻结点：M0 结束时 ports v1 冻结；M1 内允许小修（上述第一级），M3 起 trait 改动默认需要 ADR。
-- 任何人发现实现与 port 语义冲突：停下提 issue，不静默绕过。
+- M0 结束时 ports v1 冻结；M1 内允许小修（第一级），M2 起签名改动需三人一致。
+- 实现与 port 语义冲突：停下提 issue，不静默绕过。
 
-## 5. 评审与值班安排
+## 5. 评审与值班
 
-- **互审矩阵**：A↔C 互审架构与 mac 代码；B↔C 互审架构与 win 代码；A↔B 互审 E2E 剧本与文档。任何 PR 至少一人 review（非作者），横切线相关 PR 必须由横切线负责人看一眼（许可→A，安全→B，架构→C）。
-- **周同步**（30 分钟）：三平台 E2E 矩阵红绿、arcbox 上游动态、阻塞项、下周主导项。
-- **轮值**：CHANGELOG 整理与每周 `cargo deny` 巡检，三人轮值（周次表建在本文件下方追加）。
+- 互审矩阵：A↔C 互审引擎适配与控制面；B↔C 互审架构与 Windows 代码；A↔B 互审 profiles 与安全演示。横切线相关 PR 必须由横切线负责人看（上游跟版→A，安全→B，架构→C）。
+- 周同步（30 分钟）：平台 E2E 红绿、nono 上游动态、阻塞项、下周主导项。
+- 轮值：CHANGELOG 与每周 `cargo deny` 巡检三人轮值。
 
 ## 6. 再平衡预案
 
-- **B 的 spike 失败**（WSL2+容器隔离不足）：B 与 A 一起评估把 QEMU+WHPX 兜底提前，必要时 A 暂停 M2 支援（Intel Mac 影响小于 Windows 主路径）。
-- **C 成为评审瓶颈**（M4 期）：A/B 按互审矩阵分担架构检查表（01 §8），C 只保留 port 与依赖方向终审。
-- **某成员连续缺席 > 1 周**：其横切线临时移交同互审对的成员，移交内容写入周同步记录。
+- **spike ① 失败**（WSL2 内核无法达 6.7+）：B 与 A 评估降级方案（fs-only Landlock + nono 网络代理仍可用？）或 Windows 路径改走 P2 VM 模式提前，团队裁决。
+- **C 成为瓶颈**（M1/M3 期）：A/B 按互审矩阵分担 01 §8 检查表，C 只保留 port 与依赖方向终审。
+- **成员连续缺席 > 1 周**：横切线临时移交互审对成员，写入周同步记录。

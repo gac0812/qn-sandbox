@@ -1,43 +1,43 @@
 # 架构拆分（System Architecture Breakdown）
 
-状态：Draft · 2026-10-24 · 配套文档：[01-architecture.md](./spec/01-architecture.md)（规则与依赖方向）
+状态：Draft · 2026-10-24 · 配套规则见 [spec/01-architecture.md](./spec/01-architecture.md)
 
-> 分工：**01 管规则**（为什么这样定、允许什么、禁止什么），**本文管结构**（系统拆成哪些部分、每部分管什么、边界在哪、如何对接）。
-> 冲突以 01 为准，例外是本文 §8 标注的一处修订（装配根独立为 `qn-bootstrap`）。
+> 分工：01 管规则（为什么、允许什么、禁止什么），本文管结构（拆成哪些部分、边界在哪、如何对接）。冲突以 01 为准。
 
 ---
 
 ## 1. 系统上下文（C4 L1）
 
-qn-sandbox 是**单机桌面软件**：在一台 Windows / macOS 机器上，为 AI Agent 提供隔离的 Linux 执行环境。
+qn-sandbox 是**单机桌面软件**：在一台 macOS / Windows 机器上，让 AI 编码代理（Claude Code、Codex、dsh）
+在内核强制的最小权限下运行，凭证永不进沙箱。
 
 ```mermaid
 flowchart LR
     subgraph 用户侧
-        H[人 / 终端]
-        APP[宿主应用<br/>TS / Python 程序]
+        H[人 / 终端与桌面]
+        APP[宿主应用 / TS·Python SDK]
     end
     subgraph Agent 侧
-        FW[Agent 框架<br/>Claude Code / Codex / 自研框架]
-        INSBX[沙箱内的 Agent CLI<br/>Claude Code / Codex / dsh]
+        FW[Agent 框架]
+        AG[受限运行的 Agent CLI<br/>claude-code / codex]
     end
-    SYS[qn-sandbox<br/>CLI + daemon + 沙箱]
-    NET[LLM API / GitHub 等外部服务]
-    H -->|CLI| SYS
+    SYS[qn-sandbox<br/>控制面 + nono 内核适配]
+    NET[LLM API / GitHub / MCP 服务器]
+    H -->|qn CLI / Tauri| SYS
     APP -->|HTTP / SDK| SYS
     FW -->|MCP| SYS
-    SYS -->|隔离执行| INSBX
-    INSBX -->|经网络策略出站| NET
-    SYS -.->|凭证代持，明文不出宿主| NET
+    SYS -->|nono: Landlock/Seatbelt 约束| AG
+    AG -->|出站经 allowlist 代理| NET
+    SYS -.->|phantom token 代答，明文不出宿主| NET
 ```
 
 | 参与者 | 与系统的关系 | 关键诉求 |
 | --- | --- | --- |
-| 人（终端用户） | CLI 创建/管理沙箱 | 零技术配置、5 分钟可用 |
-| 宿主应用 | SDK/HTTP 驱动沙箱 | 编程接口稳定、类型安全 |
-| Agent 框架 | MCP 接入 | 工具语义清晰、可撤销授权 |
-| 沙箱内 Agent CLI | 被隔离执行 + 凭证注入 | 能联网、能用密钥、拿不到明文存储 |
-| 外部服务 | 出站目标 | ——（受 NetPolicy 约束） |
+| 人（最终用户） | CLI / Tauri 壳 | 零技术配置、5 分钟可用、看得到审计 |
+| 宿主应用 | SDK/HTTP | 接口稳定、类型安全 |
+| Agent 框架 | MCP | 工具语义清晰、授权可撤销 |
+| 受限 Agent CLI | 被内核原语约束运行 | 能干活（fs 白名单内、放行域名可达）但拿不到凭证 |
+| 外部服务（LLM/MCP） | 出站目标 | 只经 allowlist 代理访问 |
 
 ---
 
@@ -45,213 +45,153 @@ flowchart LR
 
 | 容器 | 形态 | 职责 | 不做什么 | 对外通信 |
 | --- | --- | --- | --- | --- |
-| `qn`（CLI） | 独立二进制 | 人机入口：参数解析、呈现、`doctor` 环境自检 | 任何业务规则 | 连接 qnd（HTTP/本地回环）；`--direct` 模式下进程内直用 core |
-| `qnd`（daemon） | 常驻进程 | 能力中枢：API 服务、驱动装配、沙箱注册表、凭证代理 | 业务规则（在 core）、平台调用（在 driver） | 监听 127.0.0.1（token 认证）；对 guest 走 §6 通道 |
-| guest agent | 沙箱内静态二进制 | 执行面：exec（PTY/流式）、文件收发、无凭证本地出口代理 | 任何宿主概念、明文凭证存储 | 沙箱内监听，经通道被宿主访问 |
-| drivers ×3 | 链接进 qnd 的库 | 平台适配：把 core port 翻译成 VZ/WSL/QEMU 操作 | 互相调用、业务规则 | 外部工具调用（`wsl.exe`、`qemu-system`）或框架 API |
-| OS 凭证库 | 外部存储 | 长期密钥唯一存放地 | —— | 仅经 `keyring`（qn-daemon 独占） |
-| 本地状态 | `~/.qn/` 文件 | 注册表、配置、日志、镜像缓存 | 密钥 | 文件锁串行化写入 |
+| `qn`（CLI） | 独立二进制 | 人机入口：run/status/audit/doctor、profile 管理 | 业务规则 | 连 qnd；`--direct` 进程内直用 core |
+| `qnd`（控制面后端 daemon） | 常驻进程 | 装配适配器、状态与审计查询、M3 起 HTTP API | 业务规则（在 core）、直连 nono 细节 | 127.0.0.1 + token；被 CLI/Tauri/SDK/MCP 使用 |
+| `qn-ui`（Tauri 壳） | 桌面应用 | profiles / 权限 / 状态 / 审计四视图 | 任何后端逻辑 | 只走 qnd |
+| **nono**（外部单二进制） | 第三方引擎 | 进程沙箱（Seatbelt/Landlock）、phantom token 凭证代理、L7 网络规则、防篡改审计 | ——（我们不改其源码，锁版本） | 被 qn-nono 以子进程/FFI 驱动；代理承接沙箱出站 |
+| WSL2 发行版（仅 Windows） | 受管 Linux 环境 | 承载 nono 与 Agent CLI 运行 | —— | qn-wsl 经 `wsl.exe` 供给与管理 |
+| OS 凭证库 | 外部存储 | 真实凭证宿主侧存放（跟随 nono 机制）；qn 自身 token | —— | keyring 仅 qn-daemon |
+| 本地状态 | `~/.qn/` | 配置、会话注册、审计缓存、日志 | 凭证明文 | 文件锁串行 |
 
 ```mermaid
 flowchart LR
-    CLI[qn CLI] --> D[qnd daemon]
+    CLI[qn CLI] --> D[qnd]
+    UI[Tauri qn-ui] --> D
     SDK[SDK] --> D
     MCP[qn-mcp] --> D
-    D --> B[qn-bootstrap 装配根]
-    B --> VF[qn-driver-vf] --> VM[(Linux VM<br/>+ guest agent)]
-    B --> WSL[qn-driver-wsl] --> DISTRO[(WSL2 发行版<br/>容器×N + agent)]
-    B --> QE[qn-driver-qemu] --> QVM[(QEMU VM<br/>+ agent)]
-    D --> KR[(OS 凭证库)]
-    D --> FS[(~/.qn 状态)]
+    D --> BS[qn-bootstrap]
+    BS --> N[qn-nono] --> NONO((nono 引擎))
+    BS --> B[qn-broker] --> NONO
+    BS --> G[qn-gateway] --> NET2[MCP 服务器]
+    BS --> W[qn-wsl] --> DISTRO[(WSL2 发行版 + nono)]
+    N --> AG[受限 Agent 进程]
 ```
 
 ---
 
-## 3. 组件视图（C4 L3）——逐 crate 拆分
-
-> 每个组件五要素：**职责 / 边界（不做什么）/ 内部模块 / 对外接口 / 测试策略**。
+## 3. 组件视图（C4 L3）——逐 crate（五要素：职责/边界/内部模块/接口/测试）
 
 ### 3.1 `qn-core` — 领域内核
-- **职责**：领域模型、业务规则、ports 定义；全部能力只写一遍的地方。
-- **边界**：不依赖任何 driver/surface/平台 API；不做平台 IO（除内存对象）。
-- **内部模块**：
-  | 模块 | 内容 |
-  | --- | --- |
-  | `domain::sandbox` | `Sandbox`、`SandboxId`、`SandboxSpec`、`SandboxState` **状态机**（`transition()` 全仓库唯一合法迁移表） |
-  | `domain::image` | `Image`、`ImageRef`（name:tag@arch）、`ImageManifest` |
-  | `domain::exec` | `ExecRequest`、`ExecResult`、`ExecEvent`（流式）、`StopMode` |
-  | `domain::secret` | `SecretRef`、`Grant`、`AgentAppId`、`AgentAppCatalog`（模板 → 所需凭证清单） |
-  | `domain::policy` | `MountSpec`（白名单挂载）、`PortMapping`、`NetPolicy` |
-  | `port::` | `SandboxDriver`、`GuestAgent`、`CredentialBroker`、`ImageStore`（语义见 §5） |
-  | `service::` | `SandboxService`（生命周期编排：resolve 镜像 → driver.create → 注册表登记）、`AgentAppService`（模板解析） |
-  | `registry` | 沙箱注册表 trait + 内存实现（落盘实现属 daemon，core 只定义接口） |
-  | `error` | 统一 `Error` + 各领域错误变体 |
-- **测试策略**：状态机穷举迁移表、编排服务用 fake driver/fake store、领域类型 round-trip（serde）。
+- **职责**：领域模型、状态机、ports；能力只写一遍的地方。
+- **边界**：不依赖适配器/surface/平台 API；不做 IO。
+- **内部模块**：`domain::session`（Session/RunSpec/SessionStatus/StopMode + 状态机唯一迁移表）、`domain::profile`（ProfileRef/权限集/凭证绑定）、`domain::secret`（SecretRef/Grant/GrantScope/AgentAppId）、`domain::audit`（AuditEvent/Denial）、`port::`（SandboxEngine/CredentialBroker/McpGateway）、`service::`（RunService：profile 解析→grant→run→登记；McpService）、`registry`（会话注册表 trait + 内存实现）、`error`。
+- **测试**：状态机穷举、服务编排用 fake 引擎、serde round-trip。
 
-### 3.2 `qn-config` — 配置与平台常量
-- **职责**：`config.toml` + `QN_*` 环境变量合并解析；平台路径（`~/.qn` → `%LOCALAPPDATA%\qn`）；`#[cfg(target_os)]` 白名单位置之一。
-- **边界**：无运行时业务逻辑；不读凭证。
-- **内部模块**：`parse`（toml/env 分层合并）、`paths`（目录布局唯一权威，§7）、`consts`（默认超时、端口段）。
-- **测试**：配置合并优先级矩阵、路径各平台快照。
+### 3.2 `qn-nono` — 引擎适配器（A 负责人）
+- **职责**：nono 安装与版本锁、`run --profile` 拉起、status/`why` 透传、审计日志采集；实现 `SandboxEngine`。
+- **边界**：全仓唯一触碰 nono 的 crate；不自研任何隔离机制。
+- **内部模块**：`installer`（下载/校验/锁版）、`runner`（子进程或 FFI——M0 spike 定）、`profile_gen`（core Profile → nono profile JSON）、`audit_tail`（审计流采集与 Denial 结构化）、`why`（拒绝原因透传）。
+- **测试**：对 nono 的契约测试（真二进制，CI 缓存）；profile 生成快照测试。
 
-### 3.3 `qn-infra` — 通用机制
-- **职责**：被各层复用的"机制"（不含领域语义）：`process`（外部命令执行：超时/输出截断/命令行记录/退出码）、`fs`（Utf8 路径、原子写、临时目录）、`lockfile`（注册表并发）、`logging`（tracing 初始化与滚动文件）、`retry`（退避封装）。
-- **边界**：不知道 Sandbox 是什么。
-- **测试**：process 对 stub 可执行文件的契约测试（注入式，见 05 §2）。
+### 3.3 `qn-broker` — 凭证代答（A 负责人）
+- **职责**：包装 nono phantom-token 代理与上游 allowlist；grant/revoke 生命周期；实现 `CredentialBroker`；托管配置校验（明文即拒绝）。
+- **内部模块**：`grant_table`（会话×引用×作用域，TTL/撤销）、`managed_config`（MCP/Agent 配置校验与写入——引用/句柄白名单）、`audit`（只记引用名不记值）。
+- **测试**：grant 生命周期、托管配置明文拒绝矩阵、撤销即断供。
 
-### 3.4 `qn-driver-vf` — macOS 后端
-- **职责**：把三个 ports 翻译成 Virtualization.framework / arcbox 能力。
-- **边界**：`arcbox/` subtree 只读（R4）；无 Windows 代码路径；`unsafe` 仅限 FFI 绑定层。
-- **内部模块**：`adapter`（arcbox 类型 ↔ core 类型**单向映射**）、`machine`（create/start/stop/remove/status/list 编排）、`channel`（guest 通道建立与寻址，复用 arcbox vsock）、`snapshot`（M5）。
-- **测试**：对 fake arcbox 接口的适配层契约测试；真机 E2E（05 §4 矩阵）。
+### 3.4 `qn-gateway` — MCP mediation（C 负责人）
+- **职责**：宿主侧代答 MCP 服务器认证（agent 配置只有 Handle）；实现 `McpGateway`。
+- **内部模块**：`registry`（McpServerRef→Handle）、`mediator`（请求转发+认证附加）、`config_emit`（向沙箱输出的配置只含 Handle/代理地址）。
+- **测试**：注册/代答/撤销流；配置产出零明文断言。
 
-### 3.5 `qn-driver-wsl` — Windows 后端
-- **职责**：WSL2 发行版生命周期 + 其上每沙箱一容器的管理。
-- **内部模块**：`distro`（`wsl --import/--unregister` 受管发行版）、`container`（runc/crun CLI 适配，**内部 trait 化**以便未来换运行时）、`bridge`（宿主↔guest 通道寻址与互操作）、`health`（WSL 版本/状态探测）。
-- **边界**：输出解析只依赖退出码与结构化标记（容忍本地化输出，02 §6）。
+### 3.5 `qn-wsl` — Windows 供给链路（B / gac0812 负责人）
+- **职责**：WSL2 发行版安装、内核版本探测与升级（Landlock 网络 ≥6.7）、nono 引导、宿主↔WSL2 代理打通；一键化。
+- **边界**：无 macOS 代码；输出解析只依赖退出码与结构化标记。
+- **内部模块**：`distro`（发行版生命周期）、`kernel`（版本探测/升级路径，spike ① 产出物落地）、`bootstrap`（nono 安装与代理配置下发）、`health`（doctor 探测）。
 - **测试**：stub `wsl.exe` 契约测试 + Windows 真机 E2E。
 
-### 3.6 `qn-driver-qemu` — 兜底后端
-- **内部模块**：`accel`（HVF/WHPX/KVM 能力探测，探测结果缓存）、`machine`（QEMU 进程参数生成与生命周期）、`disk`（镜像挂接）、`net`（user-mode hostfwd 端口映射）。
-- **边界**：GPL 的 QEMU 以外部进程方式使用，不链接其代码。
-- **里程碑**：M5 前不启动（ADR-0002），crate 骨架先占位。
+### 3.6 `qn-daemon` / `qn-cli` / `qn-ui` / `qn-mcp` — 控制面（C 负责人）
+- `qn-daemon`：`api`（M3 起 ConnectRPC；此前进程内接口）、`store`（会话注册落盘，fail-closed）、`events`（生命周期/审计事件流）。薄壳，无业务规则。
+- `qn-cli`：`commands`（run/status/audit/doctor/mcp/profile）、`output`（human/json）、`doctor`（nono 版本/Seatbelt-Landlock 可用性/WSL2 内核——用户友好的落地件）。
+- `qn-ui`：Tauri 壳，四视图组件；全部数据走 qnd。
+- `qn-mcp`：沙箱能力映射为 MCP tools（M3）。
 
-### 3.7 `qn-agent` — guest 内代理
-- **职责**：沙箱内执行面服务；**musl 静态链接**、双架构（aarch64/x86_64）。
-- **内部模块**：`rpc`（Connect 服务实现）、`exec`（PTY + 流式 runner，交互式 Agent CLI 的硬前提）、`fs`（tar 流收发）、`proxy`（无凭证本地出口代理：纯转发，M1 起；凭证由宿主网关在出站流量上代答）。
-- **边界**：优先复用 arcbox 的 Linux agents，本 crate 只做差量；不依赖宿主端重型依赖。
-- **测试**：Linux 容器内集成测试（Ubuntu runner 即可）。
+### 3.7 `qn-config` / `qn-infra` / `qn-bootstrap` — 基座
+- `qn-config`：config.toml + `QN_*` 合并、路径布局（§7）、nono 锁定版本常量；`#[cfg]` 白名单位置。
+- `qn-infra`：`process`（外部命令统一封装：超时/截断/退出码）、`fs`、`lockfile`、`logging`、`retry`。
+- `qn-bootstrap`：按平台装配唯一适配器组合（macOS：nono 直跑；Windows：qn-wsl 供给 + nono in WSL2）；`#[cfg]` 白名单位置。
 
-### 3.8 `qn-bootstrap` — 装配根（对 01 的一处修订，见 §8）
-- **职责**：按目标平台**选择唯一 driver** 并构造 `Arc<dyn SandboxDriver>`，组装 core service；daemon 与 CLI 直连模式共用，消除两处重复装配。
-- **边界**：除装配外无逻辑；`#[cfg(target_os)]` 白名单位置之一。
-- **内部模块**：`assembly`（cfg 选择）、`wiring`（service/registry/broker 构造与注入）。
-
-### 3.9 `qn-daemon` — 能力中枢
-- **内部模块**：`api`（Connect 服务：sandbox/image/secret/health，薄壳转发 core）、`broker`（`CredentialBroker` 实现 + 认证代答网关：keyring 访问、grant 表、TTL/撤销、**流量代答**、审计日志——**只记引用名不记值**）、`store`（注册表落盘：JSON + fd-lock，**损坏 fail-closed**）、`events`（生命周期事件广播）。
-- **边界**：不写业务规则；不碰平台调用。
-- **测试**：起真 daemon + fake driver 断言 HTTP 行为与错误码（05 §2）。
-
-### 3.10 `qn-cli` — 人机入口
-- **内部模块**：`commands`（clap 树：sandbox/image/exec/cp/doctor）、`output`（human/json 双格式）、`doctor`（环境自检：WSL 版本/虚拟化开启/磁盘空间——"用户友好"的落地件）。
-- **边界**：零业务逻辑；`--direct` 模式经 bootstrap 进程内直用 core。
-
-### 3.11 `qn-mcp` — Agent 框架入口
-- **内部模块**：`tools`（tool → core 调用映射表：sandbox.* / exec / files / secrets.revoke）、`transport`（stdio + HTTP）。
-- **边界**：不旁路实现任何 core 能力。
-
-### 3.12 SDK（`sdks/typescript`、`sdks/python`）
-- 契约生成 + 薄人体工学层，规范见 03；不在此重复。
+### 3.8 `qn-vm`（P2 占位，不实现）与 `sdks/`
+- `qn-vm`：强隔离模式（VZ/QEMU + guest 内 nono），P2 立项；实现同一 `SandboxEngine` port。
+- SDK：契约生成 + 薄层（M3，规范 03）。
 
 ---
 
-## 4. Crate 依赖矩阵（✓ 允许 / ✗ 禁止；CI 由 cargo-deny ban 强制）
+## 4. Crate 依赖矩阵（✓ 允许 / ✗ 禁止；cargo-deny ban 强制）
 
-| from ↓ \ to → | core | config | infra | bootstrap | driver-* | arcbox | daemon | cli | mcp |
+| from ↓ \ to → | core | config | infra | bootstrap | nono | broker | gateway | wsl | daemon |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | core | — | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| config | ✗ | — | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| infra | ✗ | ✓ | — | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| driver-vf/wsl/qemu | ✓ | ✓ | ✓ | ✗ | ✗ | 仅 vf | ✗ | ✗ | ✗ |
-| bootstrap | ✓ | ✓ | ✓ | — | ✓ | ✗ | ✗ | ✗ | ✗ |
-| daemon | ✓ | ✓ | ✓ | ✓ | ✗（经 bootstrap） | ✗ | — | ✗ | ✗ |
-| cli / mcp | ✓ | ✓ | ✓ | ✓ | ✗（经 bootstrap） | ✗ | ✗ | — | ✗ |
-| agent | ✗（独立构建，仅共享契约生成代码） | ✗ | ✗ | ✗ | ✗ | 契约/agents 复用 | ✗ | ✗ | ✗ |
+| config / infra | ✗ | — | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| qn-nono | ✓ | ✓ | ✓ | ✗ | —（自身） | ✗ | ✗ | ✗ | ✗ |
+| qn-broker | ✓ | ✓ | ✓ | ✗ | ✓（经其代理 API） | — | ✗ | ✗ | ✗ |
+| qn-gateway | ✓ | ✓ | ✓ | ✗ | ✗ | ✓（grant 校验） | — | ✗ | ✗ |
+| qn-wsl | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | — | ✗ |
+| bootstrap | ✓ | ✓ | ✓ | — | ✓ | ✓ | ✓ | ✓ | ✗ |
+| daemon / cli / ui / mcp | ✓ | ✓ | ✓ | ✓ | ✗（经 bootstrap） | ✗ | ✗ | ✗ | — |
 
-要点：**core 是唯一被所有人依赖、自己不依赖任何人的层**；`bootstrap` 是唯一同时看见 core 与 drivers 的 crate。
+要点：core 零依赖被所有人依赖；**qn-nono 是唯一触碰 nono 的 crate**；bootstrap 是唯一组合根。
 
----
+## 5. 接口契约（port 语义表，签名见 01 §4）
 
-## 5. 接口契约（port 语义表）
-
-> 签名草案在 01 §4；这里补齐**语义**——实现者与评审据此对齐。
-
-### 5.1 `SandboxDriver`
+### 5.1 `SandboxEngine`
 | 方法 | 语义与不变式 | 幂等性 | 错误变体 |
 | --- | --- | --- | --- |
-| `create(spec)` | 创建不启动；镜像必须先 resolve 成功；**无默认挂载、无默认凭证** | 同名已存在 → 报错（非重建） | `InvalidSpec`、`ImageMissing`、`ResourceExhausted` |
-| `start(id)` | 从 Stopped/Failed 可启动；成功即状态机 `Running`，失败不留半开状态 | 已 Running → Ok | `StateConflict`、`BackendFailure` |
-| `stop(id, mode)` | `Graceful`：TERM→超时→KILL（超时常量在 config）；`Kill`：立即 | 已 Stopped → Ok | `StateConflict`、`Timeout` |
-| `remove(id)` | 先强制停再删盘；Running 时须显式 stop 过或传 force | 不存在 → Ok（清理语义） | `StateConflict` |
-| `status/list` | 只读；状态值必须出自 core 状态机枚举 | 是 | `NotFound` |
-| `connect(id)` | 返回 `GuestAgent` 通道；仅 Running 可用；通道断开可重连 | 是 | `NotRunning`、`ChannelUnavailable` |
+| `run(spec)` | profile 先解析成功；限制施加不可逆；**默认拒绝、按 profile 放行**；失败不留半开进程 | 同 spec 重复 → 新 Session | `InvalidProfile`、`EngineUnavailable`、`ResourceExhausted` |
+| `status(id)` | 只读；状态值出自 core 枚举 | 是 | `NotFound` |
+| `explain(id)` | 返回 Denial 列表（透传 nono why） | 是 | `NotFound` |
+| `stop(id, mode)` | Graceful：TERM→超时→KILL；Kill：立即 | 已停 → Ok | `StateConflict`、`Timeout` |
 
-### 5.2 `GuestAgent`
-| 方法 | 语义 | 备注 |
+### 5.2 `CredentialBroker`
+| 方法 | 语义 | 安全不变式（08 §4） |
 | --- | --- | --- |
-| `exec(req)` | 一次性执行，带超时与取消；退出码/信号如实回传 | 超时与取消是不同错误变体（02 §4） |
-| `exec_stream(req)` | stdout/stderr 事件流 + **PTY 模式**（交互式 Agent CLI 硬前提） | 事件含 started/output/exit |
-| `upload/download` | tar 流；路径白名单校验在宿主侧先做 | 大文件流式，不整载内存 |
+| `grant(id, refs, scope)` | 授予引用使用权；phantom token 就绪；审计记引用名+时间+会话 | 明文路径仅：宿主存储 → nono 代理 → 出站认证字段 |
+| `write_managed_config` | 校验并写 agent/MCP 配置 | 出现明文即拒绝；只允许 Handle/引用/代理地址 |
+| `revoke(grant)` | 立即断供 | 该会话后续出站即刻失去认证 |
 
-### 5.3 `CredentialBroker`
-| 方法 | 语义 | 安全不变式（08 §4 / guardrails） |
-| --- | --- | --- |
-| `grant(id, refs, ttl)` | 授予引用使用权；网关按 grant 在出站流量上代答；审计记 引用名+时间+沙箱 | 明文路径仅：OS 凭证库 → 宿主内存 → 出站认证字段，不出宿主边界 |
-| `write_managed_config(id, app, cfg)` | 校验并写沙箱内 MCP/Agent 配置 | 配置含明文 → **拒绝写入**；只允许引用与非敏感代理地址 |
-| `revoke(grant)` | 立即断流 | 该沙箱后续出站请求不再获得认证，即刻失效 |
-
-### 5.4 `ImageStore`
+### 5.3 `McpGateway`
 | 方法 | 语义 |
 | --- | --- |
-| `resolve(ref)` | 本地是否存在；返回 manifest（含 arch、digest） |
-| `import(src, progress)` | 可取消、有进度事件；来源与 digest 记录入 manifest |
-| `remove / list` | 清理与枚举；被引用中的镜像拒绝删除 |
+| `register(server)` | 登记 MCP 服务器（真实凭证留宿主侧），产出 Handle |
+| `mediate(handle, req)` | 转发请求并在宿主侧附加认证；Handle 失效即拒 |
+| `revoke(handle)` | 立即失效 |
 
----
+## 6. 通道与协议视图
 
-## 6. 通道与协议视图（宿主 ↔ guest）
-
-| 驱动 | 通道机制 | 备注 |
+| 通道 | 机制 | 备注 |
 | --- | --- | --- |
-| vf (macOS) | arcbox 的 vsock 通道（复用上游实现） | 寻址由 driver 的 `channel` 模块封装 |
-| wsl (Windows) | 宿主↔发行版 localhost 互操作转发；Win10 兼容性归入 M3 spike 清单 | 解析只依赖结构化标记 |
-| qemu (兜底) | user-mode 网络 hostfwd | 端口段常量在 qn-config |
+| qnd ↔ nono | 子进程或 FFI（M0 spike 定）；审计经文件/流采集 | 唯一经 qn-nono |
+| 沙箱出站 ↔ 外部 | nono 凭证代理（allowlist + phantom token 附加认证） | 越权即拒 + Denial |
+| qnd ↔ WSL2 | `wsl.exe` 命令 + localhost 代理 | 仅 Windows |
+| 控制面对外（M3） | ConnectRPC（契约同源生成 SDK/qn-mcp） | 单一契约源 |
 
-协议统一为 **ConnectRPC（契约同源）**：同一份 proto 同时生成 qnd 对外 API、qn-agent guest 服务、SDK——契约一处改，三端同步（ADR-0003）。代答网关的代理流量复用既有通道与端口转发，不新开协议；沙箱内进程只见本地代理地址（非敏感配置），凭证全程不出宿主。
-
----
-
-## 7. 数据视图（`~/.qn/` 布局；Windows 路径由 qn-config 解析）
+## 7. 数据视图（`~/.qn/`；Windows 路径由 qn-config 解析）
 
 ```
 ~/.qn/
-├── config.toml                 # 用户配置（无密钥字段——凭证安全红线）
-├── token                       # daemon 本地访问凭证（0600）
-├── registries/
-│   └── sandboxes.json          # 沙箱注册表：状态机落盘 + fd-lock；损坏 → fail-closed 拒绝服务
-├── images/
-│   └── <name>/<tag>/<arch>/{rootfs.tar.zst, manifest.json}   # digest、来源、创建时间
-├── logs/                       # qnd + per-sandbox 滚动日志（tracing json）
-└── cache/                      # 下载临时 / 模板缓存（可随时清空）
+├── config.toml            # 用户配置（无任何凭证字段）
+├── token                  # qnd 本地访问凭证（0600）
+├── sessions.json          # 会话注册表（fd-lock；损坏 fail-closed → qn doctor --repair）
+├── profiles/              # 官方/用户 profile 缓存（来源 registry 或本仓库）
+├── audit/                 # 审计事件缓存（防篡改源在 nono 侧，此处为呈现副本）
+├── logs/                  # qnd 滚动日志（tracing json；无凭证）
+└── cache/                 # nono 安装包/临时文件（可随时清空）
 ```
 
-规则：**一切状态可删除重建**（`cache` 无条件可删；`registries` 损坏时按 fail-closed 处理并提示 `qn doctor --repair`）；任何文件禁止出现凭证明文。
+规则：真实凭证不在 `~/.qn/` 任何位置（跟随 nono 宿主侧机制）；一切状态可删除重建。
 
----
-
-## 8. 对 01 的修订：装配根独立为 `qn-bootstrap`
-
-01 原表述"surfaces 通过 `qn-core::registry` 按 cfg 装配 driver"自相矛盾——R3 禁止 core 看见 drivers。
-修订：新增 `qn-bootstrap` 作为**组合根**（composition root），唯一同时依赖 core 与全部 drivers 的 crate；
-`qn-cli`/`qn-daemon` 从它取得装配好的服务。01 §2/§3/§7 的对应条目已同步更新。
-此修订让"R6 白名单位置"（AGENTS.md）增加 `qn-bootstrap` 一处，其余不变。
-
----
-
-## 9. 质量属性 → 架构决策映射
+## 8. 质量属性 → 架构决策映射
 
 | 质量属性 | 支撑决策 |
 | --- | --- |
-| 安全 | VM/容器边界（driver 层）；无默认挂载（SandboxDriver.create 语义）；凭证代理一等 port + 撤销/审计；注册表 fail-closed；RPC 输入白名单校验 |
-| 可移植 | 平台差异熔断 driver + bootstrap 装配 + config 平台路径集中；新平台 = 新 driver crate，core/surfaces 零改动 |
-| 可恢复 | 显式状态机（单一迁移表）；port 幂等语义；注册表落盘 + `doctor --repair` |
-| 性能 | 流式 exec/文件（不整载内存）；日志异步写；通道复用长连接 |
-| 可演进 | 契约先行（三端同步）；container 运行时等外部依赖在 driver 内部再 trait 化；QEMU 兜底占位不实现（ADR-0002） |
-| 可验证 | port 幂等/错误语义表（§5）直接生成测试用例清单；三平台同剧本 E2E（05 §4） |
+| 安全 | 内核原语不可逆（nono）；默认拒绝+profile 放行；凭证代答+Handle；托管配置明文即拒；注册表 fail-closed；审计防篡改 |
+| 可移植 | 引擎差异封在 qn-nono；Windows 差异封在 qn-wsl；`#[cfg]` 白名单三处 |
+| 性能 | 进程级零 VM 开销；代理长连接；审计异步采集 |
+| 可演进 | 引擎可替换（port）；P2 强隔离 VM 复用同一 port；契约先行（M3） |
+| 可验证 | port 语义表直接生成测试清单；攻击演示剧本即安全回归（05 §2） |
 
-## 10. 拆分演进规则
+## 9. 拆分演进规则
 
-- **新增 port**：≥2 个实现或 ≥2 个使用方才允许提升为 core port；否则留在原 crate 私有。
-- **新增 crate**：只有当"依赖矩阵会出现新行"或"重复装配/重复类型"发生时才允许；避免一功能一 crate。
-- **driver 内部再抽象**（如 wsl 的 container trait）：由该 driver 负责人自决，不上升为 core port。
-- **废弃**：port/签名废弃走 ADR（09 §4 同级流程），旧实现保留一个里程碑周期并打 `#[deprecated]`。
+- 新增 port：≥2 实现或 ≥2 使用方才进 core；否则留 crate 私有。
+- 新增 crate：仅当依赖矩阵出现新行或出现重复装配/重复类型时。
+- 适配器内部再抽象（如 qn-wsl 的内核升级策略）：负责人自决，不上升 core。
+- 废弃 port/签名：三人一致 + 决策 issue（09 §4），旧实现保留一个里程碑周期。

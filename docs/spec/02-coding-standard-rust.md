@@ -5,12 +5,12 @@
 
 ## 1. 工具链与配置基线
 
-- `rust-toolchain.toml` 锁定 stable 版本（起始 MSRV 记录在 workspace `Cargo.toml` 的 `rust-version = "1.85"`，随 ADR 演进）。
+- `rust-toolchain.toml` 锁定 stable 版本（起始 MSRV 记录在 workspace `Cargo.toml` 的 `rust-version = "1.85"`；调整需决策 issue 确认）。
 - workspace 根 `Cargo.toml` 统一 `[workspace.lints]`，所有 crate `lints.workspace = true`，禁止 crate 自行放宽：
 
 ```toml
 [workspace.lints.rust]
-unsafe_code = "forbid"          # driver-vf 例外：绑定 Virtualization.framework 处允许 unsafe，块外必须注释 SAFETY:
+unsafe_code = "forbid"          # qn-nono 例外：若采用 FFI 集成，其绑定层允许 unsafe，块外必须注释 SAFETY:（子进程模式则无例外）
 missing_docs = "warn"
 
 [workspace.lints.clippy]
@@ -19,7 +19,7 @@ pedantic = { level = "warn", priority = -1 }
 unwrap_used = "deny"
 expect_used = "deny"
 todo_without_issue = "warn"     # 需要自定义 lint 时允许去掉，裸 TODO 由 review 兜底
-module_name_repetitions = "allow"   # qn-driver-vf::vf_mod 这类允许
+module_name_repetitions = "allow"   # qn-nono::nono_mod 这类允许
 cognitive_complexity = "warn"
 ```
 
@@ -30,21 +30,21 @@ cognitive_complexity = "warn"
 
 | 概念 | 统一词 | 禁用 |
 | --- | --- | --- |
-| 宿主上运行的一个隔离环境 | `Sandbox` | VM、Machine、Box、Container |
-| 沙箱的标识 | `SandboxId`（`sbx-` 前缀 + 雪花/uuid，见 04 矩阵） | id、key、handle 混用 |
-| 镜像 | `Image`（`ImageRef` = name:tag@arch） | template、snapshot |
-| 驱动实现 | `*Driver`（`VfDriver` 不行——去掉缩写歧义 → `VirtualizationDriver`？否：crate 名已限定，类型名 `Vf`、`Wsl`、`Qemu` 允许，但**只在各自 crate 内**） | Backend/Provider/Platform 混用 |
-| 沙箱内执行通道 | `GuestAgent` | helper、runner |
-| 宿主守护进程 | `qn-daemon`（二进制 `qnd`） | server、service 混用 |
+| 一次受限进程环境的运行实例 | `Session` | Sandbox、VM、Machine、Box、Container |
+| 会话标识 | `SessionId`（`sxn-` 前缀 + uuid v7） | id、key 混用 |
+| 引擎适配器 | `*Adapter`（如 `NonoAdapter`；P2 的 `VmAdapter`） | Driver/Backend/Provider/Engine 混用 |
+| 凭证代答组件 | `CredentialBroker`（qn-broker） | injector（禁用词） |
+| MCP mediation 产出 | `Handle` | token（禁用）、secret |
+| 控制面后端 | `qn-daemon`（二进制 `qnd`） | server、service 混用 |
 | 停止方式 | `StopMode::{Graceful, Kill}` | shutdown/terminate/force 混用 |
 
 缩写规则：`Id`、`Url`、`Rpc`、`Tcp` 大写驼峰内全大写；crate 内部私有实现允许上下文清晰的短名。
 
 ## 3. 类型与 API 设计
 
-- **新类型化**（newtype）一切领域 ID：`struct SandboxId(Uuid)`，禁止 `String` 满天飞导致参数串位。
+- **新类型化**（newtype）一切领域 ID：`struct SessionId(Uuid)`，禁止 `String` 满天飞导致参数串位。
 - 构造函数统一 `new` + 校验，失败返回 `Result`；提供 `TryFrom<&str>` 用于解析输入。
-- 状态机显式化：沙箱状态 `enum SandboxState { Creating, Running, Stopped, Failed, Removing }`，非法迁移在 core 集中定义 `fn transition(&self, next) -> Result<SandboxState>`，driver 不得各自定义状态语义。
+- 状态机显式化：会话状态 `enum SessionState { Starting, Running, Stopped, Failed }`，非法迁移在 core 集中定义 `fn transition(&self, next) -> Result<SessionState>`，适配器不得各自定义状态语义。
 - 公共 API 参数 ≥ 4 个时引入参数结构体（`…Params`）；`SandboxSpec` 即此模式。
 - trait 面向"最小必需"：先有调用方再定签名；为"以后可能"加的方法一律拒绝（记 TODO）。
 - `Display`/`Debug`：领域类型必须实现；`Debug` 输出不得含敏感字段（密码/token 用 `#[derivative]` 或手写脱敏）。
@@ -56,10 +56,10 @@ cognitive_complexity = "warn"
 // ✅ 本 crate 错误：来源完整、信息可行动
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("sandbox {id} is not running (state: {state}); start it first")]
-    NotRunning { id: SandboxId, state: SandboxState },
-    #[error("image {image} not found locally; run `qn image pull {image}`")]
-    ImageMissing { image: ImageRef },
+    #[error("session {id} is not running (state: {state}); check 'qn status'")]
+    NotRunning { id: SessionId, state: SessionState },
+    #[error("profile {profile} not found; run `qn profile list` first")]
+    ProfileMissing { profile: ProfileRef },
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }
@@ -83,7 +83,7 @@ Err(Error::Other("bad input".into()))      // 字符串错误类型（唯一逃�
 
 ## 6. 平台代码（R6 展开）
 
-- `unsafe` 只允许出现在 `qn-driver-vf` 的 FFI 绑定层；每个 unsafe 块上方 `// SAFETY: <不变式>`。
+- `unsafe` 只允许出现在 `qn-nono` 的 FFI 绑定层（若采用 FFI 集成；子进程模式则全仓 forbid）；每个 unsafe 块上方 `// SAFETY: <不变式>`。
 - 外部命令调用统一走 `qn-infra::process`（记录命令行、超时、退出码、输出截断策略），禁止各处散落 `std::process::Command`。
 - 路径处理统一 `camino::Utf8PathBuf`（跨 WSL/Windows 路径转换显式化），禁止字符串拼路径。
 - WSL 桥接命令（`wsl.exe -d …`）的输出解析必须容忍本地化输出，只依赖退出码与结构化标记。

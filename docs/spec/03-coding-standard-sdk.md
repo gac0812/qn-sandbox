@@ -4,11 +4,11 @@
 
 ## 0. 总原则
 
-1. **契约先行**：SDK 的类型与 API 形态来自协议契约（ConnectRPC proto / OpenAPI，见 ADR-0003）。
+1. **契约先行**：SDK 的类型与 API 形态来自协议契约（ConnectRPC proto，单一契约源，见 01 §6）。
    类型由生成器产出（`@connectrpc/connect` + `connect-query` / `connect-python`），手写代码只做"人体工学层"。
    **禁止手写与生成类型平行的重复定义**——发现生成类型难用，改契约，不改 SDK 手写层。
-2. **三平台一个 API**：SDK 不暴露任何平台概念（WSL、VZ、镜像路径……）。平台差异在 daemon 端消化。
-3. 参考 E2B SDK 的用户视角命名（`sandbox.run_code`、`sandbox.files.write`），但映射到本项目领域词（`Sandbox`/`Exec`/`Files`）。
+2. **双平台一个 API**：SDK 不暴露任何平台概念（WSL2、Landlock、Seatbelt、nono 路径……）。平台差异在控制面消化。
+3. 参考 E2B SDK 的用户视角命名，但映射到本项目领域词（`Session`/`Run`/`Audit`，glossary 为准）。
 
 ## 1. 目录与生成物
 
@@ -35,7 +35,7 @@ sdks/python/
 
 - 顶层等待封装：公开方法全部返回 `Promise`；流式 exec 返回 `AsyncIterable<ExecEvent>`。
 - 错误：`QnError` 基类 + `SandboxNotFoundError / ExecTimeoutError / PermissionDeniedError …`；
-  每个错误带 `sandboxId`、`requestId` 字段方便报障。禁止把原始 RPC 错误对象抛给用户。
+  每个错误带 `sessionId`、`requestId` 字段方便报障。禁止把原始 RPC 错误对象抛给用户。
 - 默认值集中在 `client.ts`（connect timeout 10s / exec 无超时但可传 / retry 只对幂等操作）。
 - lint：eslint + `typescript-eslint` recommended-type-checked；`no-floating-promises: error`。
 - 公共 API 100% TSDoc，示例进 `examples/` 并在 CI 中编译。

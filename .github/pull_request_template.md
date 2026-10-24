@@ -1,4 +1,4 @@
-<!-- 标题遵循 Conventional Commits，如 feat(driver-wsl): support sparse image import -->
+<!-- 标题遵循 Conventional Commits，如 feat(broker): add scoped credential exchange -->
 
 ## 做了什么 / 为什么
 
@@ -6,7 +6,7 @@
 
 ## 设计取舍
 
-<关键决定与备选方案；架构级变更附 ADR 链接>
+<关键决定与备选方案；架构级变更附决策 issue 链接>
 
 ## 验证证据（R7，不得空）
 
@@ -27,4 +27,4 @@
 - [ ] 非测试代码无 unwrap/expect（R5）；错误类型化且上下文完整
 - [ ] 公开 API 有 `///` 文档；注释只解释"为什么"
 - [ ] TODO 带归属（R8）；生成物未手改（R9）
-- [ ] 相关文档已同步（spec / ADR / glossary / crate README）
+- [ ] 相关文档已同步（spec / glossary / crate README / profiles）

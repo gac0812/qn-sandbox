@@ -1,48 +1,43 @@
 # 05 — 测试与质量门禁
 
-状态：Draft · 2026-10-24 · **实施状态**：本文为目标态——CI 门禁（§3）与覆盖率统计当前未接入，待 workspace 骨架（M0）搭建完毕后补上，跟踪见根目录 [TODO.md](../../TODO.md)（TODO-001 / TODO-002）。
+状态：Draft · 2026-10-24 · **实施状态**：CI 门禁（§3）与覆盖率当前未接入，待 M0 骨架后补上（TODO-001/002）；nono 前置 spike 见 TODO-004。
 
 ## 1. 测试金字塔与各层职责
 
 ```
-        ┌─────────────┐
-        │  E2E（每平台）│  tests/e2e/  ── 真实 VM 起停，跑用户剧本；慢、数量少、只在对应平台跑
-        ├─────────────┤
-        │  集成（crate）│  crates/*/tests/ ── trait 实现对着假 guest/假命令跑；分钟级
-        ├─────────────┤
-        │  单元（模块内）│  #[cfg(test)] ── 秒级，无外部资源；覆盖规则/状态机/解析
-        └─────────────┘
+        ┌──────────────────┐
+        │ E2E（每平台）      │  tests/e2e/ ── 真实 nono + 真实 Agent CLI，跑用户剧本与攻击演示
+        ├──────────────────┤
+        │ 集成（crate）      │  crates/*/tests/ ── 适配器对真 nono 二进制（CI 缓存）/ stub wsl.exe
+        ├──────────────────┤
+        │ 单元（模块内）      │  #[cfg(test)] ── 秒级，无外部资源
+        └──────────────────┘
 ```
 
 | 层 | 覆盖对象 | 环境 | CI 中 |
 | --- | --- | --- | --- |
-| 单元 | core 状态机、config 解析、错误映射、路径转换 | 纯内存 | 每平台矩阵都跑 |
-| 集成 | driver 的 trait 实现逻辑（用 mock 外部命令）、daemon API（起内存实例） | 临时目录 + stub 命令 | 每平台矩阵都跑 |
-| E2E | 用户剧本：创建→exec→传文件→停止→删除 | **真实平台**（macOS runner / Windows runner + WSL2） | 每日 + 手动触发（PR 可选跑） |
+| 单元 | core 状态机、profile 生成、grant 表、托管配置校验、错误映射 | 纯内存 | 全矩阵 |
+| 集成 | `qn-nono` 对真 nono 的契约（run/status/why/审计）；`qn-wsl` 对 stub `wsl.exe`；`qn-gateway` mediation；daemon API | 临时目录 + 缓存的 nono 二进制 / stub | 全矩阵 |
+| E2E | 用户剧本 + **攻击演示**（安全回归） | 真实平台 | 每日 + PR 可选 |
 
-## 2. 各层写法要求
+### 安全回归的特殊地位
+**攻击演示剧本是安全条款的回归测试**（08 全部机制），任何触及隔离/凭证/策略的 PR 必须跑：
+读 `~/.ssh`、`~/.aws` → 被拒 + Denial 留痕；越权域名出站 → 被拒；环境变量探测 → 无凭证；
+revoke 后出站 → 立即断供；托管配置写明文 → 拒绝写入。任何一条放行 = P0 缺陷（§6）。
 
-### 单元测试
-- 与代码同文件；一个行为一个测试；表驱动（`fn_cases`/手写循环）优先于复制粘贴。
-- 不依赖执行顺序、不依赖真实文件系统（用 `tempfile`）、不 sleep（tokio `start_paused = true` 或事件等待）。
-- 核心状态机（`SandboxState::transition`）必须有**穷举迁移表**测试。
+## 2. E2E 剧本（P0 验收即它的通过）
 
-### 集成测试
-- driver 测试针对 trait 写，不针对具体平台写死：mock `wsl.exe`/`qemu` 的可执行 stub 放 `tests/fixtures/bin/`，通过环境变量注入。
-- daemon 测试用真实 daemon + 假 driver（`mockall` 或手写 fake），断言 HTTP 行为与错误码。
-- 断言错误也要断言**错误信息内容**（可行动性是规范的一部分）。
-
-### E2E（每个里程碑的验收就是它的剧本）
-```yaml
-剧本 1（M1/M2/M3 通用，参数化平台）:
-  - qn image import <fixtures 镜像>
-  - qn create --image ubuntu --name t1
-  - qn exec t1 -- echo hello        → stdout == "hello"
-  - qn cp ./main.py t1:/tmp/ && qn exec t1 -- python /tmp/main.py → 退出码 0
-  - qn stop t1 && qn rm t1          → 清理干净（list 不含 t1）
-剧本 2（M4）: 同剧本 1 改用 Python SDK 走 daemon API
 ```
-- E2E 失败必须输出：平台信息、qn 日志尾部、状态文件内容（自动收集进 CI artifact）。
+剧本 1（M1 macOS / M2 Windows 参数化）:
+  - qn doctor                          → nono 就绪（版本=锁定值；机制可用）
+  - qn run --agent claude-code -- <真项目目录>   → 会话进入 Running，受限运行
+  - 沙箱内读 ~/.ssh、越权出站            → 全部 Denial 且 qn audit 可见
+  - qn mcp add <server>                → agent 配置只有 Handle
+  - qn revoke <session>                → 出站立即断供
+  - qn stop / 清理                      → 无残留进程
+剧本 2（M3）: 同剧本 1 改用 Python SDK 走控制面 API。
+```
+- E2E 失败自动收集：平台信息、qn 日志尾部、审计事件尾部（CI artifact）。
 
 ## 3. 质量门禁（CI stages）
 
@@ -50,34 +45,33 @@
 | --- | --- | --- |
 | fmt | `cargo fmt --all -- --check` | 每 PR |
 | clippy | `cargo clippy --workspace --all-targets -- -D warnings` | 每 PR |
-| test | `cargo test --workspace`（三平台矩阵） | 每 PR |
-| deny | `cargo deny check licenses bans advisories` | 每 PR + 每周定时 |
+| test | `cargo test --workspace`（平台矩阵） | 每 PR |
+| deny | `cargo deny check licenses bans advisories` | 每 PR + 每周 |
 | doc | `cargo doc --no-deps`（broken links = fail） | 每 PR |
-| gen-drift | SDK 生成物与契约一致性 diff | 契约/SDK 变更 PR |
-| coverage | `cargo llvm-cov` —— 目标：core ≥ 90%，driver 逻辑层 ≥ 70%（FFI/外部命令壳不计入） | 每日，低于线开 issue |
+| 攻击演示 | 剧本 1 安全子集（读密钥/越权出站/revoke 断供） | 每 PR（触及 08 机制的必跑） |
+| coverage | `cargo llvm-cov`：core ≥ 90%，适配器逻辑层 ≥ 70% | 每日，低于线开 issue |
 
 ## 4. 平台测试矩阵
 
 | runner | 跑什么 |
 | --- | --- |
-| ubuntu-latest | 编译 + 单元（跨平台公共逻辑的快速反馈） |
-| macos-14 (arm64) | 全套 + E2E 剧本 1（VZ 路径） |
-| macos-13 (x64, Intel) | 全套 + E2E 剧本 1（Intel 路径）——M2 起启用 |
-| windows-2022 | 全套 + E2E 剧本 1（WSL2 路径，workflow 里先 `wsl --install`）——M3 起启用 |
+| ubuntu-latest | 编译 + 单元（快速反馈） |
+| macos-latest | 全套 + 剧本 1（nono 原生路径）——M1 起启用 |
+| windows-2022 | 全套 + 剧本 1（WSL2 路径：workflow 先装 WSL2 并校验内核 ≥6.7，Landlock 网络可用性探测）——M2 起启用 |
 
-本地无对应平台时：AI 必须在汇报中如实标注"未在 X 平台验证"（AGENTS.md §7），不得只凭 ubuntu 编译通过宣称跨平台完成。
+本地无对应平台时：AI 必须在汇报中如实标注"未在 X 平台验证"（AGENTS §7）。
 
-## 5. 验收定义（DoD，每个任务完成必须全部满足）
+## 5. 验收定义（DoD）
 
-1. AGENTS.md §6 自检清单全勾。
-2. 新行为有测试覆盖（单元/集成至少其一；里程碑级功能必有 E2E 剧本行）。
-3. 验证证据（命令+平台+结果）写入 PR/汇报。
-4. 相关文档同步（spec/ADR/glossary/crate README）。
+1. AGENTS §6 自检清单全勾。
+2. 新行为有测试；触及安全机制的必须有攻击演示子集通过。
+3. 验证证据（命令+平台+结果）写入 PR。
+4. 相关文档同步（spec/crate README/glossary/profiles）。
 5. 无新增告警、无新增依赖红线。
 
-## 6. 缺陷分级与回归
+## 6. 缺陷分级
 
-- P0：沙箱逃逸迹象、数据损坏、宿主机系统文件被改 → 立即修复 + 补回归测试 + ADR 复盘。
-- P1：核心命令不可用、跨平台行为不一致 → 修复版本内完成。
-- P2/P3：体验与文档问题 → issue 跟踪。
-- 每个修复 bug 的 PR 必须包含"先复现（红）再修复（绿）"的测试提交顺序。
+- **P0**：任何攻击演示子集放行（凭证可见/越权出站/撤销不生效/审计缺失）→ 立即修复 + 回归 + 决策 issue 复盘。
+- P1：核心命令不可用、跨平台行为不一致。
+- P2/P3：体验与文档 → issue 跟踪。
+- 修 bug 的 PR 必须包含"先复现（红）再修复（绿）"的测试提交顺序。
