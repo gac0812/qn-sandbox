@@ -8,6 +8,11 @@ use std::io;
 /// Failures while installing, probing, or parsing the locked `nono` release.
 #[derive(Debug, thiserror::Error)]
 pub enum NonoError {
+    /// Cached archive or installed executable is missing, nonregular or differs from the pin.
+    #[error(
+        "managed engine integrity is unavailable; run 'qn install' to restore the pinned binary"
+    )]
+    InstallationIntegrity,
     /// A bounded native query exited unsuccessfully; raw output is omitted.
     #[error("nono {operation} failed with exit code {code:?}; check the managed state")]
     CommandFailed {
