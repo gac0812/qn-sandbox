@@ -631,6 +631,10 @@ version = "0.1.0"
 [[package]]
 name = "qn-gateway"
 version = "0.1.0"
+dependencies = [
+ "qn-core",
+ "url",
+]
 
 [[package]]
 name = "qn-infra"

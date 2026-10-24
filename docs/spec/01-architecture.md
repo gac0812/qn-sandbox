@@ -130,6 +130,17 @@ Unix 进程组或 Windows Job Object。取消/超时先终止再回收；父进�
 #46 的零缓存撤销 → 按请求检查 grant；#48 的 stderr 歧义 → 显式证据来源与完整性。
 这些前期实测不是完整 Agent、broker 或跨平台 E2E 的完成证明。
 
+### 4.2 MCP HTTP 路由规划（#122 / #123）
+
+core `McpRouting` 定义宿主路由规划，`qn-gateway::HttpMcpRouting` 实现规范端点校验。
+契约源自 #122 本地集成中的 CLI 与原生 MCP 测试消费者；本切片仅发布规划能力，
+消费者、bootstrap 装配及原生测试另行发布。HTTP/SSE 转发与凭证代答仍复用 nono/broker，
+不新增代理或 adapter 互引。路由保留 name/origin/path 和 POST/GET/DELETE，不含凭证。
+仅接受规范 HTTPS 或数字回环 HTTP；拒绝 userinfo/query/fragment、控制空白、别名、
+百分号路径、反斜线和前导双斜线路径。复用已锁 url 解析器，错误/Debug 不回显输入。
+路由只供可信宿主使用，不是 Agent 配置、注册、授权或存活证明；生产注册、stdio、
+OAuth、Windows 和 #93 整树清理仍待完成。按 #14/#47 委托实施，不声明 B/C 个人审批。
+
 ## 5. 数据流（两个代表场景）
 
 **场景 A：`qn run --agent claude-code`（P0 主路径）**

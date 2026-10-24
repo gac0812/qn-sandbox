@@ -39,6 +39,7 @@
 | 错误定义 ⭐ / 日志 ⭐ | `thiserror`（库层）+`anyhow`（应用层）/ `tracing` + `tracing-subscriber` |
 | 序列化 ⭐ / CLI ⭐ | `serde`+`serde_json`+`toml` / `clap`(derive) |
 | ID ⭐ / 路径 ⭐ / 目录 | `uuid`(v7) / `camino` / `dirs`（qn-config 独占） |
+| URL 解析 | `url` 2.5.8（#122）：复用既有 HTTP client 依赖版本；gateway 直接使用，MIT/Apache-2.0、MSRV 1.63、平台无关。原有传递图 44 个包，接受复用现有图而非新增 30 包以内限制；无新包/版本 |
 | 重试 / 文件锁 ⭐ | `backon` / `fd-lock` |
 | 受管进程生命周期 | `process-wrap` 8.2.2（#65）：复用进程组/Job Object；infra 定义策略接口，bootstrap 选择平台包装器；全平台传递包 44 个、锁文件增量 20 个，按 #65 选型例外接受；关闭库的 tracing feature，保持 Rust 1.85 基线；不是安全沙箱 |
 | RPC/契约（M3 起） | ConnectRPC 生态（`connect-rpc`/`prost`；与契约生成同源） |
