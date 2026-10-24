@@ -21,6 +21,10 @@ allow = [
     "ISC",
     "Unicode-3.0",
     "Zlib",
+    # MPL-2.0：弱 copyleft（文件级不传染），仅为已批准依赖的传递依赖放行
+    # （dirs → option-ext）。当前 cargo-deny 版本的 licenses.exceptions 不支持
+    # per-crate 键，无法机器精确化——"仅限传递"由 spec 04 §2 规定、人评强制。
+    "MPL-2.0",
 ]
 confidence-threshold = 0.8
 
