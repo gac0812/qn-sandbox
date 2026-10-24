@@ -18,14 +18,25 @@ pub enum Error {
         source: std::io::Error,
     },
 
+    /// 子进程已启动，但等待其退出时发生 IO 错误。
+    /// 行动指引：多为系统级异常，重试或查看系统日志。
+    #[error("failed to wait for `{program}`: {source}")]
+    Wait {
+        /// 命令的程序名。
+        program: String,
+        /// 底层 IO 错误。
+        #[source]
+        source: std::io::Error,
+    },
+
     /// 命令超过时限被强制终止。
     /// 行动指引：放宽 timeout 或排查该命令为何挂起。
-    #[error("command `{label}` timed out after {timeout_secs}s and was killed")]
+    #[error("command `{label}` timed out after {timeout_ms}ms and was killed")]
     TimedOut {
         /// 命令标签（默认为程序名）。
         label: String,
-        /// 生效的超时秒数。
-        timeout_secs: u64,
+        /// 生效的超时毫秒数（亚秒精度，避免 400ms 被显示为 0s）。
+        timeout_ms: u64,
     },
 
     /// 命令被调用方取消并终止（与超时是不同的错误变体，spec 02 §4）。

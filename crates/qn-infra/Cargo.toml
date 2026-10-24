@@ -7,7 +7,7 @@ publish.workspace = true
 description = "Shared mechanisms (process runner, ...) for qn-sandbox; no domain concepts"
 
 [dependencies]
-tokio = { version = "1", features = ["process", "time", "io-util", "rt", "macros", "sync"] }
+tokio = { version = "1", features = ["process", "time", "io-util", "rt", "macros"] }
 tokio-util = { version = "0.7" }
 thiserror = "2"
 tracing = "0.1"

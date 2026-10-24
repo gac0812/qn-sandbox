@@ -1,9 +1,12 @@
 //! 外部命令统一执行器。
 //!
 //! 仓库唯一允许触达外部二进制（nono、`wsl.exe`、内核安装工具等）的路径：
-//! - **argv 数组 only**：不存在任何 shell 字符串拼接（spec 08 §5）；
+//! - **argv 数组 only**：不提供隐式 shell 解释入口（spec 08 §5）——
+//!   argv 照样可以显式调用 shell，那是调用方的选择，此处保证的是绝无"悄悄"拼接；
 //! - **可观测**：spawn 与结束均有 tracing 结构化事件；
-//! - **可超时**：默认 [`DEFAULT_TIMEOUT`]，可按命令覆盖；
+//!   注意：stdout/stderr 摘要会以 debug 级进入 tracing——输出可能含敏感内容
+//!   的调用方必须知晓此行为（08 §7）；
+//! - **可超时**：默认 [`DEFAULT_TIMEOUT`]，可按命令覆盖；drain 阶段同样受超时约束；
 //! - **可取消**：[`run_with_cancel`] 接受 `CancellationToken`，取消即 kill；
 //! - **输出可信**：stdout/stderr 有界捕获（[`DEFAULT_MAX_OUTPUT_BYTES`]），
 //!   超出标记 truncated，绝不无界吃内存。
@@ -215,12 +218,16 @@ async fn run_inner(spec: &CmdSpec, cancel: Option<CancellationToken>) -> Result<
     command
         .args(&spec.args)
         .kill_on_drop(true)
+        // stdin=null：run-to-completion 语义的探测/管理命令不需要标准输入。
+        // TODO(#27): 交互式 agent 会话需要 spawn + stdin 透传的长会话 API。
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
     for (key, value) in &spec.env {
         command.env(key, value);
     }
+    // TODO(#27): env_clear/env_remove —— qn-nono 拉起沙箱进程前必须能剥离
+    // 宿主环境中的凭证变量（08 §4：凭证不进沙箱进程链）。
     if let Some(cwd) = &spec.cwd {
         command.current_dir(cwd);
     }
@@ -242,7 +249,7 @@ async fn run_inner(spec: &CmdSpec, cancel: Option<CancellationToken>) -> Result<
     let started = std::time::Instant::now();
 
     let status = tokio::select! {
-        status = child.wait() => status.map_err(|source| Error::Spawn {
+        status = child.wait() => status.map_err(|source| Error::Wait {
             program: spec.program.clone(),
             source,
         })?,
@@ -250,7 +257,7 @@ async fn run_inner(spec: &CmdSpec, cancel: Option<CancellationToken>) -> Result<
             let _ = child.start_kill();
             return Err(Error::TimedOut {
                 label,
-                timeout_secs: timeout.as_secs(),
+                timeout_ms: u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX),
             });
         }
         () = async {
@@ -264,8 +271,29 @@ async fn run_inner(spec: &CmdSpec, cancel: Option<CancellationToken>) -> Result<
         }
     };
 
-    let (stdout, stdout_truncated) = stdout_rx.await.unwrap_or_else(|_| (Vec::new(), false));
-    let (stderr, stderr_truncated) = stderr_rx.await.unwrap_or_else(|_| (Vec::new(), false));
+    // drain 阶段也要有超时：子进程退出后，孙进程可能仍持有管道写端
+    // （Unix 后台子进程 / Windows `start /b` / wsl.exe 拉起的服务），
+    // 否则 run() 会在"进程已成功退出"之后永久挂起（spec 02 §5）。
+    let remaining = timeout.saturating_sub(started.elapsed());
+    let drain = async { tokio::join!(stdout_rx, stderr_rx) };
+    let Some((stdout_res, stderr_res)) = tokio::time::timeout(remaining, drain).await.ok() else {
+        let _ = child.start_kill();
+        // TODO(#27): 进程组级 kill（Unix killpg / Windows Job Object）——
+        // start_kill 只杀直接子进程，孙进程可能存活。
+        return Err(Error::TimedOut {
+            label,
+            timeout_ms: u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX),
+        });
+    };
+    // reader 任务失败（JoinError）时输出不完整：告警并把该流标记为 truncated。
+    let (stdout, stdout_truncated) = stdout_res.unwrap_or_else(|join_err| {
+        tracing::warn!(label = %label, error = %join_err, "stdout reader task failed");
+        (Vec::new(), true)
+    });
+    let (stderr, stderr_truncated) = stderr_res.unwrap_or_else(|join_err| {
+        tracing::warn!(label = %label, error = %join_err, "stderr reader task failed");
+        (Vec::new(), true)
+    });
     let duration = started.elapsed();
 
     let outcome = CmdOutcome {
@@ -329,7 +357,13 @@ async fn read_bounded<R: tokio::io::AsyncRead + Unpin>(
     // 提前停读会关闭管道读端，把还在写的子进程送上 SIGPIPE（Linux 实测）。
     loop {
         match tokio::io::AsyncReadExt::read(&mut reader, &mut chunk).await {
-            Ok(0) | Err(_) => break,
+            Ok(0) => break,
+            Err(err) => {
+                // 读错误意味着输出不完整：置 truncated，避免被报告为"完整未截断"。
+                tracing::warn!(error = %err, "output stream read failed; marking truncated");
+                truncated = true;
+                break;
+            }
             Ok(n) => {
                 let keep = (max - buf.len()).min(n);
                 buf.extend_from_slice(&chunk[..keep]);

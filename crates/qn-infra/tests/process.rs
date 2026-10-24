@@ -73,12 +73,9 @@ async fn it_times_out_and_kills_the_child() {
     let started = std::time::Instant::now();
     let err = process::run(&spec).await.expect_err("must time out");
     match err {
-        Error::TimedOut {
-            label,
-            timeout_secs,
-        } => {
+        Error::TimedOut { label, timeout_ms } => {
             assert_eq!(label, "hang");
-            assert_eq!(timeout_secs, 0, "sub-second timeout is allowed");
+            assert_eq!(timeout_ms, 400, "sub-second timeout must keep ms precision");
         }
         other => panic!("expected Error::TimedOut, got: {other:?}"),
     }
@@ -152,5 +149,117 @@ async fn it_passes_env_overrides_to_child() {
         out.stdout.trim_end().contains("qn-value-42"),
         "env override must reach the child, got: {:?}",
         out.stdout
+    );
+}
+
+#[tokio::test]
+async fn it_returns_spawn_error_for_missing_program() {
+    let spec = CmdSpec::new("qn-definitely-missing-binary-xyz").label("missing");
+    let err = process::run(&spec)
+        .await
+        .expect_err("missing binary must fail");
+    match err {
+        Error::Spawn { program, source: _ } => {
+            assert_eq!(program, "qn-definitely-missing-binary-xyz");
+        }
+        other => panic!("expected Error::Spawn, got: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn it_captures_stderr_content() {
+    let snippet = if cfg!(windows) {
+        "echo oops 1>&2"
+    } else {
+        "echo oops >&2"
+    };
+    let out = process::run(&shell(snippet)).await.expect("echo must run");
+    assert!(out.success, "snippet itself must succeed");
+    assert!(
+        out.stderr.trim_end().contains("oops"),
+        "stderr must be captured, got: {:?}",
+        out.stderr
+    );
+}
+
+#[tokio::test]
+async fn it_runs_in_configured_cwd() {
+    let unique = format!("qn-infra-cwd-{}", std::process::id());
+    let cwd = std::env::temp_dir().join(&unique);
+    std::fs::create_dir_all(&cwd).expect("temp dir must be creatable");
+    let cwd = camino::Utf8PathBuf::from_path_buf(cwd)
+        .map_err(|p| format!("non-utf8 temp path: {p:?}"))
+        .expect("temp dir must be utf-8");
+    let snippet = if cfg!(windows) { "cd" } else { "pwd" };
+    let spec = shell(snippet).cwd(cwd.clone());
+    let out = process::run_checked(&spec).await.expect("pwd must run");
+    assert!(
+        out.stdout.contains(&unique),
+        "child must run inside cwd {unique}, got: {:?}",
+        out.stdout
+    );
+    std::fs::remove_dir_all(cwd).ok();
+}
+
+#[tokio::test]
+async fn it_survives_dual_stream_flood_without_deadlock() {
+    // 两路各写约 300KB，远超管道缓冲与捕获上限：验证并发 reader 不死锁、
+    // 双流都被有界截断、子进程正常退出（SIGPIPE 语义回归的双流版本）。
+    let snippet = if cfg!(windows) {
+        "@for /L %i in (1,1,20000) do @(echo 0123456789abcdef & echo 0123456789abcdef 1>&2)"
+    } else {
+        "for i in $(seq 1 20000); do echo 0123456789abcdef; echo 0123456789abcdef >&2; done"
+    };
+    let spec = shell(snippet).max_output_bytes(8192).label("dual-flood");
+    let out = process::run(&spec)
+        .await
+        .expect("flood must complete, not deadlock");
+    assert!(out.success, "snippet itself must succeed: {}", out.stderr);
+    assert!(out.stdout_truncated, "stdout must be truncated");
+    assert!(out.stderr_truncated, "stderr must be truncated");
+    assert!(
+        out.stdout.len() <= 16384,
+        "stdout bounded: {}",
+        out.stdout.len()
+    );
+    assert!(
+        out.stderr.len() <= 16384,
+        "stderr bounded: {}",
+        out.stderr.len()
+    );
+}
+
+#[tokio::test]
+async fn it_completes_normally_when_token_never_fires() {
+    // run_with_cancel 的"未取消"分支：token 存在但不触发，命令应正常完成。
+    let spec = shell("echo fine").label("no-cancel");
+    let cancel = CancellationToken::new();
+    let out = process::run_with_cancel(&spec, cancel)
+        .await
+        .expect("must complete normally");
+    assert!(out.success);
+    assert!(out.stdout.trim_end().contains("fine"));
+}
+
+// Windows 侧 `start /b` 的句柄继承语义未验证，与 #27（进程组 kill）一起补。
+#[cfg(not(windows))]
+#[tokio::test]
+async fn it_times_out_draining_when_grandchild_holds_the_pipe() {
+    // 子进程立即退出，后台孙进程继承并持有 stdout 写端：
+    // 若 drain 阶段无超时，run() 会在此永久挂起（本次评审修复的回归钉子）。
+    let spec = shell("echo done; sleep 30 &")
+        .timeout(Duration::from_secs(2))
+        .label("drain-hang");
+    let started = std::time::Instant::now();
+    let err = process::run(&spec)
+        .await
+        .expect_err("drain phase must time out");
+    assert!(
+        matches!(err, Error::TimedOut { .. }),
+        "expected Error::TimedOut, got: {err:?}"
+    );
+    assert!(
+        started.elapsed() < Duration::from_secs(10),
+        "drain timeout must fire near the 2s bound"
     );
 }
