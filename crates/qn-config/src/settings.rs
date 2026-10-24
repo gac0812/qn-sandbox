@@ -58,15 +58,13 @@ impl Config {
     /// # Errors
     /// - [`Error::Parse`]：环境变量值不是合法数字（路径字段写 `<env>`）。
     pub fn apply_env_overrides(self) -> Result<Self, Error> {
-        self.apply_env_overrides_with(&|key| {
-            std::env::var(key)
-                .ok()
-                .map(|v| v.trim().to_owned())
-                .filter(|v| !v.is_empty())
-        })
+        self.apply_env_overrides_with(&|key| std::env::var(key).ok())
     }
 
     /// 注入 lookup 的覆盖逻辑（测试用；生产入口是 [`Config::apply_env_overrides`]）。
+    ///
+    /// 值归一化（trim + 空串视为未设置）在**本核心**内完成，薄封装只做纯读取，
+    /// 保证该语义可被测试钉死。
     ///
     /// # Errors
     /// 见 [`Config::apply_env_overrides`]。
@@ -75,7 +73,10 @@ impl Config {
         lookup: &dyn Fn(&str) -> Option<String>,
     ) -> Result<Self, Error> {
         let mut cfg = self;
-        if let Some(raw) = lookup("QN_DEFAULT_TIMEOUT_MS") {
+        if let Some(raw) = lookup("QN_DEFAULT_TIMEOUT_MS")
+            .map(|v| v.trim().to_owned())
+            .filter(|v| !v.is_empty())
+        {
             cfg.default_timeout_ms = Some(raw.parse::<u64>().map_err(|_| Error::Parse {
                 path: Utf8PathBuf::from("<env:QN_DEFAULT_TIMEOUT_MS>"),
                 message: format!("not a valid u64: {raw}"),

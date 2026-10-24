@@ -15,7 +15,7 @@
 
 | # | 问题 | 通过线 |
 | --- | --- | --- |
-| 1 | License？ | MIT / Apache-2.0 / BSD / ISC / Unicode-3.0 / Zlib；MPL-2.0 仅限已批准依赖的传递依赖（弱 copyleft、文件级不传染，如 dirs → option-ext），新增**直接**依赖不得使用 |
+| 1 | License？ | MIT / Apache-2.0 / BSD / ISC / Unicode-3.0 / Zlib；MPL-2.0 仅限已批准依赖的传递依赖（弱 copyleft、文件级不传染，如 dirs → option-ext；当前 cargo-deny 版本无法 per-crate 精确放行，此规则由 review 强制），新增**直接**依赖不得使用 |
 | 2 | 维护活跃？ | 近 6 个月有提交或宣布稳定 |
 | 3 | 平台覆盖？ | macOS（arm64+x64）与 Windows（经 WSL2）所需场景 |
 | 4 | 依赖树多大？ | 传递依赖 ≤ 30（重框架另议），无版本冲突 |

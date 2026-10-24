@@ -23,7 +23,7 @@ module_name_repetitions = "allow"   # qn-nono::nono_mod 这类允许
 cognitive_complexity = "warn"
 ```
 
-- `deny.toml`：licenses 只允许 `MIT|Apache-2.0|BSD-2|BSD-3|ISC|Unicode-3.0|Zlib`；出现 `GPL` 系列依赖必须以"外部进程调用"方式使用并在 PR 说明（如 QEMU）。
+- `deny.toml`：licenses 只允许 `MIT|Apache-2.0|BSD-2|BSD-3|ISC|Unicode-3.0|Zlib`；`MPL-2.0` 仅限已批准依赖的传递依赖（规则见 04 §2，review 强制）；出现 `GPL` 系列依赖必须以"外部进程调用"方式使用并在 PR 说明（如 QEMU）。
 - 提交前：`cargo fmt --all -- --check` 无 diff；`cargo clippy --workspace --all-targets -- -D warnings` 零告警。
 
 ## 2. 命名与词汇表

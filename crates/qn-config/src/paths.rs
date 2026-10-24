@@ -15,8 +15,8 @@ pub const QN_HOME_ENV: &str = "QN_HOME";
 ///
 /// # Errors
 ///
-/// [`Error::Read`] 系列不适用本模块；路径解析在平台目录 API 失败（如
-/// Windows 上 `%LOCALAPPDATA%` 不可得）时返回该错误，见 [`resolve_root`]。
+/// 解析失败（既无 `QN_HOME` 且平台默认目录不可得，见 [`QnPaths::resolve_with`]）
+/// 返回 [`crate::Error::PlatformRootUnavailable`]。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QnPaths {
     /// 配置根目录（即"qn home"）。
@@ -74,22 +74,17 @@ impl QnPaths {
 
     /// 纯函数形态的解析逻辑（可测试：home 由参数注入）。
     ///
-    /// `qn_home` 非空则用之；否则回退 [`platform_default_root`]。
+    /// `qn_home` 非空（非空白）则用之；否则回退 [`platform_default_root`]。
     ///
     /// # Errors
     ///
-    /// 平台默认目录不可得且未提供 home 时返回 [`crate::Error`]。
+    /// 既无有效 `qn_home` 且平台默认目录不可得时，返回
+    /// [`crate::Error::PlatformRootUnavailable`]（行动指引：显式设置 `QN_HOME`）。
     pub fn resolve_with(qn_home: Option<String>) -> Result<Self, crate::Error> {
         if let Some(home) = qn_home.filter(|s| !s.trim().is_empty()) {
             return Ok(Self::from_root(home));
         }
-        let root = platform_default_root().ok_or_else(|| crate::Error::Read {
-            path: Utf8PathBuf::from("<platform-default-root>"),
-            source: std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                "platform home directory unavailable; set QN_HOME",
-            ),
-        })?;
+        let root = platform_default_root().ok_or(crate::Error::PlatformRootUnavailable)?;
         Ok(Self::from_root(root))
     }
 

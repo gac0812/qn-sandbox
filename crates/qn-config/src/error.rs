@@ -4,6 +4,11 @@
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
+    /// 平台默认根目录不可得（如 Windows 缺 `%LOCALAPPDATA%`，或平台路径非 UTF-8）。
+    /// 行动指引：显式设置 `QN_HOME` 环境变量指定 qn home。
+    #[error("platform default root unavailable; set QN_HOME to configure qn's home explicitly")]
+    PlatformRootUnavailable,
+
     /// 配置文件存在但无法读取。
     /// 行动指引：检查文件权限（`qn doctor` 会给出诊断）。
     #[error("failed to read config file `{path}`: {source}")]
@@ -15,11 +20,12 @@ pub enum Error {
         source: std::io::Error,
     },
 
-    /// 配置文件不是合法 TOML 或字段类型不对。
-    /// 行动指引：按错误位置修正 config.toml；schema 见 qn-config 文档。
-    #[error("failed to parse config file `{path}`: {message}")]
+    /// 配置内容不合法：TOML 语法/字段类型错误、未知键，或环境变量值不是
+    /// 合法数字（此时 `path` 形如 `<env:QN_…>`）。
+    /// 行动指引：按错误位置修正 config.toml 或对应环境变量。
+    #[error("failed to parse config `{path}`: {message}")]
     Parse {
-        /// 配置文件路径。
+        /// 配置文件路径（或 `<env:…>` 形式的环境变量标识）。
         path: camino::Utf8PathBuf,
         /// 解析错误摘要（含行列位置）。
         message: String,

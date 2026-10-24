@@ -165,3 +165,52 @@ fn it_exposes_public_constants_consistently() {
     assert_eq!(ENV_PREFIX, "QN_");
     assert_eq!(QN_HOME_ENV, "QN_HOME");
 }
+
+#[test]
+fn it_pins_the_wsl_kernel_floor_constant() {
+    // 与 spike① 报告（#16）H3 结论一致：Landlock 网络需要内核 >= 6.7。
+    assert_eq!(qn_config::WSL_MIN_KERNEL_SEMVER, "6.7.0");
+}
+
+#[test]
+fn it_reports_read_error_when_config_file_is_a_directory() {
+    // config.toml 被目录占据：read_to_string 必失败且非 NotFound → Error::Read。
+    let dir = tempfile::tempdir().expect("tempdir");
+    let root = camino::Utf8PathBuf::from_path_buf(dir.path().to_owned()).expect("utf-8 temp path");
+    std::fs::create_dir_all(root.join("config.toml")).expect("mkdir as config file");
+    let err = Config::load(&QnPaths::from_root(root)).expect_err("dir-as-file must fail");
+    match err {
+        Error::Read { path, source: _ } => {
+            assert!(
+                path.ends_with("config.toml"),
+                "error must carry the path: {path}"
+            );
+        }
+        other => panic!("expected Error::Read, got: {other:?}"),
+    }
+}
+
+#[test]
+fn it_normalizes_env_values_in_the_injected_core() {
+    // 归一化（trim + 空串=未设置）长在 apply_env_overrides_with 核心里：
+    // 空白值不得覆盖 toml，带空白的有效值应被 trim 后生效。
+    let base = Config {
+        default_timeout_ms: Some(5000),
+    };
+    let untouched = base
+        .clone()
+        .apply_env_overrides_with(&|key| (key == "QN_DEFAULT_TIMEOUT_MS").then(|| "   ".to_owned()))
+        .expect("blank env must be treated as unset");
+    assert_eq!(
+        untouched.default_timeout_ms,
+        Some(5000),
+        "blank env keeps the toml value"
+    );
+
+    let trimmed = base
+        .apply_env_overrides_with(&|key| {
+            (key == "QN_DEFAULT_TIMEOUT_MS").then(|| " 7000 ".to_owned())
+        })
+        .expect("padded numeric env must apply after trim");
+    assert_eq!(trimmed.default_timeout_ms, Some(7000));
+}
