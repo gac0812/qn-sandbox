@@ -95,8 +95,12 @@ fn it_loads_toml_overrides() {
 fn it_rejects_malformed_toml_with_typed_error() {
     let dir = tempfile::tempdir().expect("tempdir");
     let root = camino::Utf8PathBuf::from_path_buf(dir.path().to_owned()).expect("utf-8 temp path");
-    std::fs::write(root.join("config.toml"), "default_timeout_ms = [broken\n")
-        .expect("write config");
+    let secret = "sentinel-malformed-toml-secret";
+    std::fs::write(
+        root.join("config.toml"),
+        format!("\ndefault_timeout_ms = \"{secret}\n"),
+    )
+    .expect("write config");
     let err = Config::load(&QnPaths::from_root(root)).expect_err("malformed toml must fail");
     match err {
         Error::Parse { path, message } => {
@@ -104,7 +108,22 @@ fn it_rejects_malformed_toml_with_typed_error() {
                 path.ends_with("config.toml"),
                 "error must carry the path: {path}"
             );
-            assert!(!message.is_empty(), "parse message must be actionable");
+            assert!(
+                message.contains("invalid TOML syntax"),
+                "message must classify syntax errors: {message}"
+            );
+            assert!(
+                message.contains("line 2, column "),
+                "message must locate the syntax error without echoing source: {message}"
+            );
+            assert!(
+                !message.contains(secret),
+                "message must not echo the malformed value: {message}"
+            );
+            assert!(
+                !message.contains("default_timeout_ms"),
+                "message must not echo the config key: {message}"
+            );
         }
         other => panic!("expected Error::Parse, got: {other:?}"),
     }
@@ -125,12 +144,47 @@ fn it_rejects_unknown_keys() {
     let rendered = err.to_string();
     assert!(rendered.contains("unknown config key"), "got: {rendered}");
     assert!(
+        rendered.contains("line 1, column "),
+        "unknown-key error must be locatable: {rendered}"
+    );
+    assert!(
         !rendered.contains(secret),
         "error must not echo the credential value: {rendered}"
     );
     assert!(
         !rendered.contains("api_key"),
         "error must not echo the credential field: {rendered}"
+    );
+}
+
+#[test]
+fn it_classifies_type_errors_and_locations_without_echoing_values() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let root = camino::Utf8PathBuf::from_path_buf(dir.path().to_owned()).expect("utf-8 temp path");
+    let secret = "sentinel-type-error-secret";
+    std::fs::write(
+        root.join("config.toml"),
+        format!("default_timeout_ms = \"{secret}\"\n"),
+    )
+    .expect("write config");
+
+    let err = Config::load(&QnPaths::from_root(root)).expect_err("wrong type must fail");
+    let rendered = err.to_string();
+    assert!(
+        rendered.contains("invalid config value"),
+        "message must classify type errors: {rendered}"
+    );
+    assert!(
+        rendered.contains("line 1, column "),
+        "type error must be locatable: {rendered}"
+    );
+    assert!(
+        !rendered.contains(secret),
+        "error must not echo the bad value: {rendered}"
+    );
+    assert!(
+        !rendered.contains("default_timeout_ms"),
+        "error must not echo the config key: {rendered}"
     );
 }
 

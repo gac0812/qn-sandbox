@@ -11,7 +11,7 @@ fn main() -> ExitCode {
     match qn_cli::run(&cli, &mut stdout) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("error: {error}");
+            eprintln!("error: {}", qn_cli::render_error(&error));
             ExitCode::FAILURE
         }
     }

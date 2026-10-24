@@ -16,6 +16,10 @@ qn doctor
 `config.toml` when present, applies `QN_*` environment overrides, and reports
 the effective command timeout.
 
+Environment overrides fail closed when present but not valid UTF-8. Paths in
+both normal output and error output escape terminal control characters and
+bidi controls before display.
+
 The current `doctor` output explicitly marks the sandbox engine as **not
 checked**. It is a configuration diagnostic only and must not be treated as
 evidence that nono or a restricted Agent session is ready.

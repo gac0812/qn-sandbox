@@ -13,6 +13,8 @@ use crate::paths::QnPaths;
 /// 外部命令默认超时（毫秒）。与 qn-infra 的 `DEFAULT_TIMEOUT` 保持一致。
 pub const DEFAULT_TIMEOUT_MS: u64 = 120_000;
 
+const TIMEOUT_ENV: &str = "QN_DEFAULT_TIMEOUT_MS";
+
 /// 用户配置（全部字段可选；缺失即用默认）。
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "snake_case")]
@@ -48,7 +50,7 @@ impl Config {
         };
         let parsed: Self = toml::from_str(&text).map_err(|err| Error::Parse {
             path: path.clone(),
-            message: safe_toml_error(&err),
+            message: safe_toml_error(&err, &text),
         })?;
         Ok(parsed)
     }
@@ -56,9 +58,23 @@ impl Config {
     /// 应用 `QN_*` 环境变量覆盖（在 toml 之后调用，保证 env 优先）。
     ///
     /// # Errors
-    /// - [`Error::Parse`]：环境变量值不是合法数字（路径字段写 `<env>`）。
+    /// - [`Error::Parse`]：环境变量值不是合法数字（路径字段写 `<env>`）；
+    /// - [`Error::EnvironmentNotUnicode`]：环境变量存在但不是合法 UTF-8。
     pub fn apply_env_overrides(self) -> Result<Self, Error> {
-        self.apply_env_overrides_with(&|key| std::env::var(key).ok())
+        let raw = match std::env::var(TIMEOUT_ENV) {
+            Ok(value) => Some(value),
+            Err(std::env::VarError::NotPresent) => None,
+            Err(std::env::VarError::NotUnicode(_)) => {
+                return Err(Error::EnvironmentNotUnicode { name: TIMEOUT_ENV });
+            }
+        };
+        self.apply_env_overrides_with(&|key| {
+            if key == TIMEOUT_ENV {
+                raw.clone()
+            } else {
+                None
+            }
+        })
     }
 
     /// 注入 lookup 的覆盖逻辑（测试用；生产入口是 [`Config::apply_env_overrides`]）。
@@ -73,12 +89,12 @@ impl Config {
         lookup: &dyn Fn(&str) -> Option<String>,
     ) -> Result<Self, Error> {
         let mut cfg = self;
-        if let Some(raw) = lookup("QN_DEFAULT_TIMEOUT_MS")
+        if let Some(raw) = lookup(TIMEOUT_ENV)
             .map(|v| v.trim().to_owned())
             .filter(|v| !v.is_empty())
         {
             cfg.default_timeout_ms = Some(raw.parse::<u64>().map_err(|_| Error::Parse {
-                path: Utf8PathBuf::from("<env:QN_DEFAULT_TIMEOUT_MS>"),
+                path: Utf8PathBuf::from(format!("<env:{TIMEOUT_ENV}>")),
                 message: "not a valid u64".to_owned(),
             })?);
         }
@@ -92,12 +108,41 @@ impl Config {
     }
 }
 
-fn safe_toml_error(err: &toml::de::Error) -> String {
-    if err.message().starts_with("unknown field") {
-        "unknown config key; remove unsupported keys from config.toml".to_owned()
+fn safe_toml_error(err: &toml::de::Error, text: &str) -> String {
+    let (category, action) = if err.message().starts_with("unknown field") {
+        (
+            "unknown config key",
+            "remove unsupported keys from config.toml",
+        )
+    } else if err.message().starts_with("invalid type")
+        || err.message().starts_with("invalid value")
+    {
+        ("invalid config value", "check config.toml field types")
     } else {
-        "invalid TOML syntax or value; check config.toml field types".to_owned()
+        ("invalid TOML syntax", "check config.toml syntax")
+    };
+
+    match err.span() {
+        Some(span) => {
+            let (line, column) = line_column(text, span.start);
+            format!("{category} at line {line}, column {column}; {action}")
+        }
+        None => format!("{category}; {action}"),
     }
+}
+
+fn line_column(text: &str, offset: usize) -> (usize, usize) {
+    let offset = offset.min(text.len());
+    let prefix = &text.as_bytes()[..offset];
+    let line = prefix.split(|byte| *byte == b'\n').count();
+    let line_start = prefix
+        .iter()
+        .rposition(|byte| *byte == b'\n')
+        .map_or(0, |index| index + 1);
+    let column = text
+        .get(line_start..offset)
+        .map_or(offset - line_start + 1, |suffix| suffix.chars().count() + 1);
+    (line, column)
 }
 
 fn read_if_exists(path: &Utf8PathBuf) -> Result<Option<String>, Error> {

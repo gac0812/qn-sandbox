@@ -9,6 +9,14 @@ pub enum Error {
     #[error("platform default root unavailable; set QN_HOME to configure qn's home explicitly")]
     PlatformRootUnavailable,
 
+    /// 环境变量存在，但其值不是合法 UTF-8。
+    /// 行动指引：用合法 UTF-8 文本重新设置该环境变量。
+    #[error("environment variable `{name}` is not valid UTF-8; set it to a valid UTF-8 value")]
+    EnvironmentNotUnicode {
+        /// 被拒绝的环境变量名（固定常量，不含用户输入）。
+        name: &'static str,
+    },
+
     /// 配置文件存在但无法读取。
     /// 行动指引：检查文件权限（`qn doctor` 会给出诊断）。
     #[error("failed to read config file `{path}`: {source}")]

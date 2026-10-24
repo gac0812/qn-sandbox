@@ -51,6 +51,21 @@ pub fn run(cli: &Cli, output: &mut dyn Write) -> Result<(), Error> {
     }
 }
 
+/// Renders an error for terminal presentation, escaping controls and bidi controls.
+///
+/// # Examples
+///
+/// ```
+/// let error = qn_cli::Error::Output(std::io::Error::other("line\nbreak"));
+/// let rendered = qn_cli::render_error(&error);
+///
+/// assert!(rendered.contains("line\\nbreak"));
+/// ```
+#[must_use]
+pub fn render_error(error: &Error) -> String {
+    escape_terminal_text(&error.to_string())
+}
+
 fn doctor(output: &mut dyn Write) -> Result<(), Error> {
     let paths = QnPaths::resolve()?;
     let config_file_exists = paths.config_file.exists();
@@ -58,8 +73,16 @@ fn doctor(output: &mut dyn Write) -> Result<(), Error> {
     let timeout_ms = u64::try_from(config.command_timeout().as_millis()).unwrap_or(u64::MAX);
 
     writeln!(output, "qn doctor")?;
-    writeln!(output, "home: {}", paths.root)?;
-    writeln!(output, "config: {}", paths.config_file)?;
+    writeln!(
+        output,
+        "home: {}",
+        escape_terminal_text(paths.root.as_str())
+    )?;
+    writeln!(
+        output,
+        "config: {}",
+        escape_terminal_text(paths.config_file.as_str())
+    )?;
     if config_file_exists {
         writeln!(output, "config source: loaded")?;
     } else {
@@ -73,4 +96,66 @@ fn doctor(output: &mut dyn Write) -> Result<(), Error> {
     writeln!(output, "configuration: OK")?;
 
     Ok(())
+}
+
+fn escape_terminal_text(text: &str) -> String {
+    let mut escaped = String::with_capacity(text.len());
+    for character in text.chars() {
+        if needs_terminal_escape(character) {
+            escaped.extend(character.escape_debug());
+        } else {
+            escaped.push(character);
+        }
+    }
+    escaped
+}
+
+fn needs_terminal_escape(character: char) -> bool {
+    character.is_control()
+        || matches!(
+            character,
+            '\u{061c}'
+                | '\u{200e}'
+                | '\u{200f}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202a}'..='\u{202e}'
+                | '\u{2066}'..='\u{2069}'
+        )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::escape_terminal_text;
+
+    #[test]
+    fn it_escapes_terminal_and_bidi_controls() {
+        let cases = [
+            ('\0', "\\0"),
+            ('\u{85}', "\\u{85}"),
+            ('\u{61c}', "\\u{61c}"),
+            ('\u{200e}', "\\u{200e}"),
+            ('\u{200f}', "\\u{200f}"),
+            ('\u{2028}', "\\u{2028}"),
+            ('\u{2029}', "\\u{2029}"),
+            ('\u{202a}', "\\u{202a}"),
+            ('\u{202b}', "\\u{202b}"),
+            ('\u{202c}', "\\u{202c}"),
+            ('\u{202d}', "\\u{202d}"),
+            ('\u{202e}', "\\u{202e}"),
+            ('\u{2066}', "\\u{2066}"),
+            ('\u{2067}', "\\u{2067}"),
+            ('\u{2068}', "\\u{2068}"),
+            ('\u{2069}', "\\u{2069}"),
+        ];
+
+        for (control, expected) in cases {
+            assert_eq!(
+                escape_terminal_text(&control.to_string()),
+                expected,
+                "terminal control U+{:04X} must be rendered visibly",
+                u32::from(control)
+            );
+        }
+    }
 }

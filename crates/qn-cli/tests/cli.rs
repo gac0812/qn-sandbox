@@ -6,6 +6,11 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+#[cfg(unix)]
+use std::ffi::OsString;
+#[cfg(unix)]
+use std::os::unix::ffi::OsStringExt;
+
 fn qn() -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_qn"));
     command.env_remove("QN_DEFAULT_TIMEOUT_MS");
@@ -53,11 +58,17 @@ struct TestDir {
 
 impl TestDir {
     fn new(label: &str) -> Self {
+        Self::from_component(label, "")
+    }
+
+    fn from_component(label: &str, component: &str) -> Self {
         static NEXT_ID: AtomicU64 = AtomicU64::new(0);
 
         let sequence = NEXT_ID.fetch_add(1, Ordering::Relaxed);
-        let path =
-            std::env::temp_dir().join(format!("qn-cli-{label}-{}-{sequence}", std::process::id()));
+        let path = std::env::temp_dir().join(format!(
+            "qn-cli-{label}-{}-{sequence}-{component}",
+            std::process::id()
+        ));
         std::fs::create_dir_all(&path).expect("test directory should be created");
         Self { path }
     }
@@ -214,5 +225,134 @@ fn it_hides_config_values_from_type_errors() {
     )
     .expect("config file should be written");
 
-    assert_config_error_hides(&home, "invalid TOML syntax or value", &[secret]);
+    assert_config_error_hides(&home, "invalid config value", &[secret]);
+}
+
+#[cfg(unix)]
+#[test]
+fn it_rejects_non_utf8_qn_home_without_echoing_invalid_bytes() {
+    let output = qn()
+        .arg("doctor")
+        .env(
+            "QN_HOME",
+            OsString::from_vec(vec![b'/', b't', b'm', b'p', 0xff]),
+        )
+        .output()
+        .expect("qn doctor should execute");
+
+    assert_safe_non_unicode_environment_error(output, "QN_HOME");
+}
+
+#[cfg(unix)]
+#[test]
+fn it_rejects_non_utf8_timeout_override_without_echoing_invalid_bytes() {
+    let home = TestDir::new("non-utf8-timeout");
+    let output = qn()
+        .arg("doctor")
+        .env("QN_HOME", home.path())
+        .env(
+            "QN_DEFAULT_TIMEOUT_MS",
+            OsString::from_vec(vec![b'7', 0xff, b'0']),
+        )
+        .output()
+        .expect("qn doctor should execute");
+
+    assert_safe_non_unicode_environment_error(output, "QN_DEFAULT_TIMEOUT_MS");
+}
+
+#[cfg(unix)]
+fn assert_safe_non_unicode_environment_error(output: Output, variable: &str) {
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "non-UTF-8 environment input must fail closed: {output:?}"
+    );
+    let stderr = String::from_utf8(output.stderr)
+        .expect("configuration errors must be valid UTF-8, not lossy replacements");
+    assert!(
+        stderr.contains(variable),
+        "error must identify the rejected environment variable: {stderr}"
+    );
+    assert!(
+        stderr.contains("not valid UTF-8"),
+        "error must explain the encoding problem: {stderr}"
+    );
+    assert!(
+        stderr.contains("set it to a valid UTF-8 value"),
+        "error must include actionable remediation: {stderr}"
+    );
+    assert!(
+        !stderr.contains('\u{fffd}'),
+        "error must not echo invalid bytes via lossy conversion: {stderr}"
+    );
+}
+
+#[cfg(unix)]
+const UNSAFE_PATH_COMPONENT: &str = "home\nforged: pwned\u{1b}[31m\u{202e}gnp.exe";
+
+#[cfg(unix)]
+const ESCAPED_PATH_COMPONENT: &str = "home\\nforged: pwned\\u{1b}[31m\\u{202e}gnp.exe";
+
+#[cfg(unix)]
+#[test]
+fn it_escapes_control_characters_in_successful_doctor_output() {
+    let home = TestDir::from_component("control-success", UNSAFE_PATH_COMPONENT);
+    let output = doctor(&home);
+
+    assert!(
+        output.status.success(),
+        "doctor should accept a valid path containing controls: {output:?}"
+    );
+    let stdout =
+        String::from_utf8(output.stdout).expect("doctor output containing controls must be UTF-8");
+    assert!(
+        stdout.contains(ESCAPED_PATH_COMPONENT),
+        "path controls must be rendered visibly: {stdout}"
+    );
+    assert!(
+        !stdout.contains('\u{1b}'),
+        "raw terminal escape characters must never reach stdout: {stdout}"
+    );
+    assert!(
+        !stdout.contains('\u{202e}'),
+        "raw bidi controls must never reach stdout: {stdout}"
+    );
+    assert!(
+        !stdout.contains("\nforged: pwned"),
+        "path controls must not forge a new doctor field: {stdout}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn it_escapes_control_characters_in_doctor_error_output() {
+    let home = TestDir::from_component("control-error", UNSAFE_PATH_COMPONENT);
+    std::fs::write(home.config_file(), "default_timeout_ms = [broken\n")
+        .expect("config file should be written");
+
+    let output = doctor(&home);
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "malformed config should use the normal error path: {output:?}"
+    );
+    let stderr =
+        String::from_utf8(output.stderr).expect("doctor errors containing controls must be UTF-8");
+    assert!(
+        stderr.contains(ESCAPED_PATH_COMPONENT),
+        "path controls must be rendered visibly in errors: {stderr}"
+    );
+    assert!(
+        !stderr.contains('\u{1b}'),
+        "raw terminal escape characters must never reach stderr: {stderr}"
+    );
+    assert!(
+        !stderr.contains('\u{202e}'),
+        "raw bidi controls must never reach stderr: {stderr}"
+    );
+    assert!(
+        !stderr.contains("\nforged: pwned"),
+        "path controls must not forge a new error line: {stderr}"
+    );
 }
