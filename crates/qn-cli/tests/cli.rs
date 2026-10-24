@@ -1,0 +1,218 @@
+//! End-to-end tests for the `qn` executable.
+
+#![allow(clippy::unwrap_used, clippy::expect_used)] // spec 02 §7: tests may panic with context
+
+use std::path::{Path, PathBuf};
+use std::process::{Command, Output};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+fn qn() -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_qn"));
+    command.env_remove("QN_DEFAULT_TIMEOUT_MS");
+    command
+}
+
+fn doctor(home: &TestDir) -> Output {
+    let mut command = qn();
+    command.arg("doctor").env("QN_HOME", home.path());
+    command.output().expect("qn doctor should execute")
+}
+
+fn assert_config_error_hides(home: &TestDir, reason: &str, hidden: &[&str]) {
+    let output = doctor(home);
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "doctor should fail through its normal error path: {output:?}"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("failed to parse config"), "{stderr}");
+    assert!(
+        stderr.contains(&home.config_file().display().to_string()),
+        "error should identify the config file: {stderr}"
+    );
+    assert!(
+        !stderr.contains("panicked"),
+        "doctor must not panic: {stderr}"
+    );
+    for token in hidden {
+        assert!(
+            !stderr.contains(token),
+            "error must not echo `{token}`: {stderr}"
+        );
+    }
+    assert!(
+        stderr.contains(reason),
+        "error should explain why: {stderr}"
+    );
+}
+
+struct TestDir {
+    path: PathBuf,
+}
+
+impl TestDir {
+    fn new(label: &str) -> Self {
+        static NEXT_ID: AtomicU64 = AtomicU64::new(0);
+
+        let sequence = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+        let path =
+            std::env::temp_dir().join(format!("qn-cli-{label}-{}-{sequence}", std::process::id()));
+        std::fs::create_dir_all(&path).expect("test directory should be created");
+        Self { path }
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+
+    fn config_file(&self) -> PathBuf {
+        self.path.join("config.toml")
+    }
+}
+
+impl Drop for TestDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+
+#[test]
+fn it_reports_the_package_version() {
+    let output = qn()
+        .arg("--version")
+        .output()
+        .expect("qn --version should execute");
+
+    assert!(
+        output.status.success(),
+        "qn --version should succeed: {output:?}"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        concat!("qn ", env!("CARGO_PKG_VERSION")),
+        "version output should identify qn and the package version"
+    );
+}
+
+#[test]
+fn it_lists_doctor_in_help() {
+    let output = qn()
+        .arg("--help")
+        .output()
+        .expect("qn --help should execute");
+
+    assert!(
+        output.status.success(),
+        "qn --help should succeed: {output:?}"
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("doctor"),
+        "help should advertise the doctor command"
+    );
+}
+
+#[test]
+fn it_doctors_an_empty_qn_home_with_defaults() {
+    let home = TestDir::new("defaults");
+    let output = doctor(&home);
+
+    assert!(
+        output.status.success(),
+        "doctor should accept a missing config file: {output:?}"
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains(&format!("home: {}", home.path().display())),
+        "doctor should report the resolved qn home: {stdout}"
+    );
+    assert!(
+        stdout.contains("config source: defaults (file not found)"),
+        "doctor should distinguish built-in defaults from a loaded file: {stdout}"
+    );
+    assert!(
+        stdout.contains("command timeout: 120000 ms"),
+        "doctor should report the built-in timeout: {stdout}"
+    );
+    assert!(
+        stdout.contains("sandbox engine: not checked (qn-nono integration pending)"),
+        "doctor must not imply that the sandbox engine is ready: {stdout}"
+    );
+}
+
+#[test]
+fn it_applies_environment_overrides_in_doctor() {
+    let home = TestDir::new("override");
+    std::fs::write(home.config_file(), "default_timeout_ms = 5000\n")
+        .expect("config file should be written");
+
+    let output = qn()
+        .arg("doctor")
+        .env("QN_HOME", home.path())
+        .env("QN_DEFAULT_TIMEOUT_MS", "7000")
+        .output()
+        .expect("qn doctor should execute");
+
+    assert!(
+        output.status.success(),
+        "doctor should accept a valid config: {output:?}"
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("config source: loaded"),
+        "doctor should report that the config file was loaded: {stdout}"
+    );
+    assert!(
+        stdout.contains("command timeout: 7000 ms"),
+        "environment must override the config file: {stdout}"
+    );
+}
+
+#[test]
+fn it_loads_the_config_file_without_environment_override() {
+    let home = TestDir::new("file");
+    std::fs::write(home.config_file(), "default_timeout_ms = 5000\n")
+        .expect("config file should be written");
+
+    let output = doctor(&home);
+
+    assert!(
+        output.status.success(),
+        "doctor should accept a valid config: {output:?}"
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("config source: loaded"),
+        "doctor should report that the config file was loaded: {stdout}"
+    );
+    assert!(
+        stdout.contains("command timeout: 5000 ms"),
+        "doctor should apply config-file values without an env override: {stdout}"
+    );
+}
+
+#[test]
+fn it_hides_unknown_config_keys_from_doctor_errors() {
+    let home = TestDir::new("unknown-secret");
+    let secret = "sentinel-cli-secret-9f3a";
+    std::fs::write(home.config_file(), format!("api_key = \"{secret}\"\n"))
+        .expect("config file should be written");
+
+    assert_config_error_hides(&home, "unknown config key", &["api_key", secret]);
+}
+
+#[test]
+fn it_hides_config_values_from_type_errors() {
+    let home = TestDir::new("type-error");
+    let secret = "sentinel-type-error-secret-4c2e";
+    std::fs::write(
+        home.config_file(),
+        format!("default_timeout_ms = \"{secret}\"\n"),
+    )
+    .expect("config file should be written");
+
+    assert_config_error_hides(&home, "invalid TOML syntax or value", &[secret]);
+}

@@ -115,9 +115,23 @@ fn it_rejects_unknown_keys() {
     // deny_unknown_fields：拼错键名必须在加载期暴露，而不是被静默忽略。
     let dir = tempfile::tempdir().expect("tempdir");
     let root = camino::Utf8PathBuf::from_path_buf(dir.path().to_owned()).expect("utf-8 temp path");
-    std::fs::write(root.join("config.toml"), "default_timout_ms = 1\n").expect("write config");
+    let secret = "sentinel-config-secret";
+    std::fs::write(
+        root.join("config.toml"),
+        format!("api_key = \"{secret}\"\n"),
+    )
+    .expect("write config");
     let err = Config::load(&QnPaths::from_root(root)).expect_err("typo'd key must fail");
-    assert!(matches!(err, Error::Parse { .. }), "got: {err:?}");
+    let rendered = err.to_string();
+    assert!(rendered.contains("unknown config key"), "got: {rendered}");
+    assert!(
+        !rendered.contains(secret),
+        "error must not echo the credential value: {rendered}"
+    );
+    assert!(
+        !rendered.contains("api_key"),
+        "error must not echo the credential field: {rendered}"
+    );
 }
 
 #[test]
@@ -141,9 +155,10 @@ fn it_applies_env_over_toml() {
 
 #[test]
 fn it_rejects_non_numeric_env_value() {
+    let secret = "sentinel-env-value";
     let err = Config::builtin()
         .apply_env_overrides_with(&|key| {
-            (key == "QN_DEFAULT_TIMEOUT_MS").then(|| "soon".to_owned())
+            (key == "QN_DEFAULT_TIMEOUT_MS").then(|| secret.to_owned())
         })
         .expect_err("non-numeric env must fail");
     match err {
@@ -152,7 +167,14 @@ fn it_rejects_non_numeric_env_value() {
                 path.to_string().contains("QN_DEFAULT_TIMEOUT_MS"),
                 "error must point at the env key: {path}"
             );
-            assert!(message.contains("soon"), "message must quote the bad value");
+            assert!(
+                message.contains("not a valid u64"),
+                "message must explain the expected type"
+            );
+            assert!(
+                !message.contains(secret),
+                "message must not echo the bad value: {message}"
+            );
         }
         other => panic!("expected Error::Parse, got: {other:?}"),
     }

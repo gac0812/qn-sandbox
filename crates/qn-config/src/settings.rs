@@ -48,7 +48,7 @@ impl Config {
         };
         let parsed: Self = toml::from_str(&text).map_err(|err| Error::Parse {
             path: path.clone(),
-            message: err.to_string(),
+            message: safe_toml_error(&err),
         })?;
         Ok(parsed)
     }
@@ -79,7 +79,7 @@ impl Config {
         {
             cfg.default_timeout_ms = Some(raw.parse::<u64>().map_err(|_| Error::Parse {
                 path: Utf8PathBuf::from("<env:QN_DEFAULT_TIMEOUT_MS>"),
-                message: format!("not a valid u64: {raw}"),
+                message: "not a valid u64".to_owned(),
             })?);
         }
         Ok(cfg)
@@ -89,6 +89,14 @@ impl Config {
     #[must_use]
     pub fn command_timeout(&self) -> Duration {
         Duration::from_millis(self.default_timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS))
+    }
+}
+
+fn safe_toml_error(err: &toml::de::Error) -> String {
+    if err.message().starts_with("unknown field") {
+        "unknown config key; remove unsupported keys from config.toml".to_owned()
+    } else {
+        "invalid TOML syntax or value; check config.toml field types".to_owned()
     }
 }
 
