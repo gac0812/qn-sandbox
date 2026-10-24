@@ -13,13 +13,10 @@ fn fixture() -> (tempfile::TempDir, RunSpec, RuntimePaths) {
     }
     let binary = root.join("bin/nono");
     fs::write(&binary, b"fixture binary").unwrap();
-    let spec = RunSpec::new(
-        SessionId::new(),
-        ProfileRef::try_from("qn/codex").unwrap(),
-        vec!["agent".into()],
-        root.join("home/project"),
-    )
-    .unwrap();
+    let profile = ProfileRef::try_from("qn/codex").unwrap();
+    let command = vec!["agent".into()];
+    let project = root.join("home/project");
+    let spec = RunSpec::new(SessionId::new(), profile, command, project).unwrap();
     let paths = RuntimePaths {
         control_root: root.join("control"),
         host_homes: vec![root.join("home")],
@@ -107,11 +104,9 @@ fn it_rejects_a_project_containing_a_redirected_credential_directory() {
             fs::create_dir(&target).unwrap();
         }
         std::os::unix::fs::symlink(target, paths.host_homes[0].join(name)).unwrap();
+        let result = PreparedProfile::prepare(spec, &paths);
         assert!(
-            matches!(
-                PreparedProfile::prepare(spec, &paths),
-                Err(NonoError::UnsafeWorkdir)
-            ),
+            matches!(result, Err(NonoError::UnsafeWorkdir)),
             "redirected {name} must never become project-readable"
         );
     }

@@ -6,7 +6,20 @@ use qn_core::RunSpec;
 use qn_infra::process::CmdSpec;
 use serde_json::json;
 use std::{fmt, fs};
-
+const PROTECTED_HOME_PATHS: &[&str] = &[
+    ".ssh",
+    ".aws",
+    ".gnupg",
+    ".netrc",
+    ".kube",
+    ".docker",
+    ".config",
+    ".local/share/keyrings",
+    "Library/Keychains",
+    ".claude",
+    ".codex",
+    ".nono",
+];
 /// Trusted platform/runtime inputs supplied by the composition root.
 #[derive(Clone)]
 pub struct RuntimePaths {
@@ -24,7 +37,6 @@ impl fmt::Debug for RuntimePaths {
         f.write_str("RuntimePaths(..)")
     }
 }
-
 /// Owns a private runtime layout and a network-blocked profile.
 /// Keep it alive while running; call `persist` before retaining historical audit state.
 pub struct PreparedProfile {
@@ -42,10 +54,8 @@ impl fmt::Debug for PreparedProfile {
             .finish_non_exhaustive()
     }
 }
-
 impl PreparedProfile {
-    /// Prepare synchronously; async callers must use `spawn_blocking`.
-    /// No user config, hooks, credential definitions or bypass flags are copied.
+    /// Prepare via `spawn_blocking`; never copy user config, hooks, credentials or bypass flags.
     /// # Errors
     /// Rejects unsupported profiles/grants, invalid paths, physical overlap and I/O failure.
     pub fn prepare(spec: RunSpec, paths: &RuntimePaths) -> Result<Self, NonoError> {
@@ -81,17 +91,7 @@ impl PreparedProfile {
             if ancestor(&workdir, &home)? {
                 return Err(NonoError::UnsafeWorkdir);
             }
-            for name in [
-                ".ssh",
-                ".aws",
-                ".gnupg",
-                ".config",
-                ".local/share/keyrings",
-                "Library/Keychains",
-                ".claude",
-                ".codex",
-                ".nono",
-            ] {
+            for name in PROTECTED_HOME_PATHS {
                 protect(&workdir, &home.join(name))?;
             }
         }
@@ -127,7 +127,6 @@ impl PreparedProfile {
             tool_path,
         })
     }
-
     /// Private host-side root, suitable for the scoped audit reader.
     #[must_use]
     pub fn root(&self) -> &Utf8Path {
@@ -142,19 +141,20 @@ impl PreparedProfile {
     #[must_use]
     pub fn persist(mut self) -> Self {
         if let Some(directory) = self.temporary.take() {
+            // tempfile 3.27 keep() disables Drop cleanup and returns PathBuf, not Result.
             let _ = directory.keep();
         }
         self
     }
-    /// Build strict native schema validation in the isolated environment.
+    /// Build isolated strict native schema validation; does not execute it.
     /// # Errors
     /// Returns argument-construction errors without echoing paths.
     pub fn validation_command(&self) -> Result<CmdSpec, NonoError> {
         Ok(self.command(&NonoArgs::profile_validate(&self.profile_path())?))
     }
-    /// Build a foreground invocation; no detached supervisor or credential binding.
+    /// Build foreground invocation without supervisor/credentials; execution stays in infra.
     /// # Errors
-    /// Returns argument-construction errors. Execution remains in the infra layer.
+    /// Returns argument-construction errors.
     pub fn run_command(&self) -> Result<CmdSpec, NonoError> {
         let mut args = RunArgs::from_spec(&self.spec, self.profile_path(), RunMode::Foreground);
         args.workdir = self.workdir.clone();
@@ -179,7 +179,6 @@ impl PreparedProfile {
         command
     }
 }
-
 fn write_layout(
     root: &Utf8Path,
     workdir: &Utf8Path,
@@ -196,6 +195,7 @@ fn write_layout(
         fs::create_dir_all(&path).map_err(io_error)?;
         allow.push(path.into_string());
     }
+    // nono 0.80.0 execution_runtime.rs: WSL2 refuses unenforceable proxy-only mode.
     let policy = json!({"meta":{"name":name,"version":"0.1.0"}, "extends":"default",
         "filesystem":{"allow":allow}, "network":{"block":true},
         "security":{"capability_elevation":false,"signal_mode":"isolated","process_info_mode":"isolated","wsl2_proxy_policy":"error"},
@@ -249,7 +249,6 @@ fn io_error(source: std::io::Error) -> NonoError {
         source,
     }
 }
-
 #[cfg(test)]
 #[path = "profile_tests.rs"]
 mod tests;

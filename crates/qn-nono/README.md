@@ -112,7 +112,7 @@ root 布局与 #46 探测一致（home/config/state/cache/tmp），须为受管�
 也不表示 #66 的统一事件查询或攻击 U8 已验收。schema 样本见 `tests/fixtures/nono-0.80.0/audit-*.json`。
 
 `PreparedProfile::prepare` 是阻塞准备步骤，异步调用方放入 `spawn_blocking`；`RuntimePaths` 必须来自可信装配层，
-包含实际宿主 home、控制目录、已校验引擎及工具 PATH。工作目录不能覆盖这些位置或控制程序。
+包含实际宿主 home、控制目录、已校验引擎及工具 PATH。工作目录不能覆盖这些位置、控制程序或保护路径（含 .netrc/.kube/.docker）。
 生成策略仅支持两个官方引用的离线基线：网络阻断、禁用能力提升、无 hooks/明文凭证/bypass。
 带 grant 请求直接拒绝，不能当作在线官方 profile 已完成。调用方保留准备对象直到执行结束，
 或显式 `persist` 将审计目录交给注册表管理。Linux 的安全性不依赖 deny-within-allow；原生 canary 验收由 #75 跟踪。
