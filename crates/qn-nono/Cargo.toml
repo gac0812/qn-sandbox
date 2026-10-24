@@ -22,5 +22,9 @@ serde_json = "1"
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "macros"] }
 
+[[test]]
+name = "version_environment"
+harness = false
+
 [lints]
 workspace = true
