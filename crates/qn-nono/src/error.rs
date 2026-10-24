@@ -109,10 +109,10 @@ pub enum NonoError {
         source: Box<ureq::Error>,
     },
 
-    /// The downloaded archive does not match the manifest digest. The
+    /// The cached or downloaded archive does not match the manifest digest. The
     /// artifact is refused: never install an unverifiable binary.
     #[error(
-        "downloaded archive checksum mismatch: expected {expected}, got {actual}; \
+        "nono archive checksum mismatch: expected {expected}, got {actual}; \
          refusing to install a tampered or corrupted artifact"
     )]
     ChecksumMismatch {

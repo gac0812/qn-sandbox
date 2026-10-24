@@ -1,6 +1,6 @@
 //! Download, verify, and install the locked `nono` release.
 //!
-//! Flow: resolve target → reuse existing install → download the pinned
+//! Flow: resolve target → snapshot cached archive or download the pinned
 //! GitHub release archive → verify SHA-256 against the locked manifest →
 //! unpack the single root `nono` binary into `<install_root>/<version>/nono`.
 //!
@@ -59,10 +59,11 @@ pub struct InstalledBinary {
 
 /// Installs the locked `nono` release into `<install_root>/<version>/nono`.
 ///
-/// Idempotent: an existing binary at the destination short-circuits the
-/// download. Re-verification of pre-existing installs happens via
-/// `qn doctor` once the runner lands (see the TODO below) — callers must not
-/// treat a pre-existing path as integrity-checked.
+/// Every call verifies a snapshot of the cached archive (or a fresh download)
+/// against the manifest and republishes its executable. A cached archive permits
+/// offline repair; an existing executable alone is never trusted. Use distinct
+/// install roots when staging different targets. Verification does not prevent
+/// a privileged host process from changing files after this function returns.
 ///
 /// # Errors
 ///
@@ -76,27 +77,45 @@ pub struct InstalledBinary {
 // shared engine contract is agreed; install stays synchronous and install-only.
 pub fn install(options: &InstallOptions) -> Result<InstalledBinary, InstallerError> {
     let artifact = resolve_artifact(options)?;
-    let version_dir = options.install_root.join(manifest::LOCKED_NONO_VERSION);
-    let binary_path = version_dir.join("nono");
-    if binary_path.is_file() {
-        return Ok(InstalledBinary {
-            path: binary_path,
-            version: manifest::LOCKED_NONO_VERSION,
-        });
-    }
+    install_artifact(&options.install_root, artifact)
+}
 
+fn install_artifact(
+    root: &Path,
+    artifact: &ReleaseArtifact,
+) -> Result<InstalledBinary, InstallerError> {
+    let version_dir = root.join(manifest::LOCKED_NONO_VERSION);
+    let binary_path = version_dir.join("nono");
     fs::create_dir_all(&version_dir).map_err(|source| InstallerError::Io {
         step: "creating install directory",
         source,
     })?;
-    let staging = StagingDir::new(&options.install_root).map_err(|source| InstallerError::Io {
+    let staging = tempfile::tempdir_in(&version_dir).map_err(|source| InstallerError::Io {
         step: "creating staging directory",
         source,
     })?;
 
-    let archive_path = download_to(artifact, staging.path())?;
+    let cache_path = version_dir.join(artifact.archive_name);
+    let is_cached = cache_path.is_file();
+    let archive_path = if is_cached {
+        let snapshot = staging.path().join(artifact.archive_name);
+        fs::copy(&cache_path, &snapshot).map_err(|source| InstallerError::Io {
+            step: "snapshotting cached archive",
+            source,
+        })?;
+        snapshot
+    } else {
+        download_to(artifact, staging.path())?
+    };
     verify_checksum(&archive_path, artifact)?;
     extract_binary(&archive_path, &staging.path().join("nono"))?;
+    if !is_cached {
+        fs::rename(&archive_path, &cache_path).map_err(|source| InstallerError::Io {
+            step: "publishing verified archive cache",
+            source,
+        })?;
+    }
+    // Re-extraction also restores archive permissions, not just executable bytes.
     fs::rename(staging.path().join("nono"), &binary_path).map_err(|source| InstallerError::Io {
         step: "moving binary into place",
         source,
@@ -149,10 +168,10 @@ fn download_to(artifact: &ReleaseArtifact, staging_dir: &Path) -> Result<PathBuf
     Ok(archive_path)
 }
 
-/// Hashes the downloaded archive and refuses any mismatch with the manifest.
+/// Hashes the archive snapshot and refuses any mismatch with the manifest.
 fn verify_checksum(archive_path: &Path, artifact: &ReleaseArtifact) -> Result<(), InstallerError> {
     let mut file = File::open(archive_path).map_err(|source| InstallerError::Io {
-        step: "opening downloaded archive",
+        step: "opening archive for integrity validation",
         source,
     })?;
     let mut hasher = Sha256::new();
@@ -161,7 +180,7 @@ fn verify_checksum(archive_path: &Path, artifact: &ReleaseArtifact) -> Result<()
         let read = file
             .read(&mut buffer)
             .map_err(|source| InstallerError::Io {
-                step: "hashing downloaded archive",
+                step: "hashing archive for integrity validation",
                 source,
             })?;
         if read == 0 {
@@ -197,10 +216,7 @@ fn extract_binary(archive_path: &Path, destination: &Path) -> Result<(), Install
             source,
         })?;
         let is_binary = entry.header().entry_type().is_file()
-            && entry.path().is_ok_and(|path| {
-                path.file_name()
-                    .is_some_and(|name| name == std::ffi::OsStr::new("nono"))
-            });
+            && entry.path().is_ok_and(|path| path == Path::new("nono"));
         if is_binary {
             if let Some(parent) = destination.parent() {
                 fs::create_dir_all(parent).map_err(|source| InstallerError::Io {
@@ -218,30 +234,6 @@ fn extract_binary(archive_path: &Path, destination: &Path) -> Result<(), Install
         }
     }
     Err(InstallerError::ArchiveMissingBinary)
-}
-
-/// Staging directory that cleans itself up on scope exit.
-///
-/// Best-effort cleanup: leftover staging directories are harmless and are
-/// recreated per process id, so a failed removal is not an error.
-struct StagingDir(PathBuf);
-
-impl StagingDir {
-    fn new(install_root: &Path) -> io::Result<Self> {
-        let path = install_root.join(format!(".nono-install-{}", std::process::id()));
-        fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-
-    fn path(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Drop for StagingDir {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
 }
 
 #[cfg(test)]

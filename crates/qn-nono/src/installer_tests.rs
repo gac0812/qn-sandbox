@@ -39,6 +39,10 @@ fn it_rejects_a_corrupt_cache_even_when_a_binary_already_exists() {
         super::install(&options),
         Err(InstallerError::ChecksumMismatch { .. })
     ));
+    assert_eq!(
+        fs::read(version.join("nono")).unwrap(),
+        b"untrusted executable"
+    );
 }
 
 #[test]
@@ -69,11 +73,15 @@ fn checksum_rejects_tampered_archive() {
 /// Builds an archive with the upstream layout (root `nono` binary plus an
 /// extra file) and returns the gzipped bytes.
 fn fixture_archive() -> Vec<u8> {
+    archive_with_binary("nono")
+}
+
+fn archive_with_binary(binary_name: &str) -> Vec<u8> {
     let mut gz = GzEncoder::new(Vec::new(), flate2::Compression::fast());
     {
         let mut builder = Builder::new(&mut gz);
         for (name, mode, payload) in [
-            ("nono", 0o755, b"binary-bytes".as_slice()),
+            (binary_name, 0o755, b"binary-bytes".as_slice()),
             ("docs/README", 0o644, b"readme".as_slice()),
         ] {
             let mut header = Header::new_gnu();
@@ -85,6 +93,97 @@ fn fixture_archive() -> Vec<u8> {
         builder.finish().unwrap();
     }
     gz.finish().unwrap()
+}
+
+fn cached_fixture(archive: &[u8]) -> (tempfile::TempDir, ReleaseArtifact) {
+    let root = tempfile::tempdir().unwrap();
+    let version = root.path().join(manifest::LOCKED_NONO_VERSION);
+    fs::create_dir_all(&version).unwrap();
+    let mut artifact = fixture_artifact();
+    artifact.archive_sha256 = Box::leak(hex::encode(Sha256::digest(archive)).into_boxed_str());
+    fs::write(version.join(artifact.archive_name), archive).unwrap();
+    (root, artifact)
+}
+
+#[test]
+fn it_installs_reuses_and_repairs_from_a_verified_cached_archive() {
+    let (root, artifact) = cached_fixture(&fixture_archive());
+    let installed = super::install_artifact(root.path(), &artifact).unwrap();
+    assert_eq!(fs::read(&installed.path).unwrap(), b"binary-bytes");
+    super::install_artifact(root.path(), &artifact).unwrap();
+    fs::write(&installed.path, b"modified executable").unwrap();
+    super::install_artifact(root.path(), &artifact).unwrap();
+    assert_eq!(fs::read(&installed.path).unwrap(), b"binary-bytes");
+    fs::remove_file(&installed.path).unwrap();
+    super::install_artifact(root.path(), &artifact).unwrap();
+    assert_eq!(fs::read(&installed.path).unwrap(), b"binary-bytes");
+    let version = root.path().join(manifest::LOCKED_NONO_VERSION);
+    assert_eq!(
+        fs::read_dir(version).unwrap().count(),
+        2,
+        "no staging leftovers"
+    );
+}
+
+#[test]
+fn it_rejects_a_nested_binary_without_replacing_the_existing_file() {
+    let (root, artifact) = cached_fixture(&archive_with_binary("nested/nono"));
+    let binary = root.path().join(manifest::LOCKED_NONO_VERSION).join("nono");
+    fs::write(&binary, b"unchanged").unwrap();
+    assert!(matches!(
+        super::install_artifact(root.path(), &artifact),
+        Err(InstallerError::ArchiveMissingBinary)
+    ));
+    assert_eq!(fs::read(binary).unwrap(), b"unchanged");
+}
+
+#[test]
+fn it_uses_independent_staging_for_concurrent_same_target_installs() {
+    let (root, artifact) = cached_fixture(&fixture_archive());
+    let barrier = std::sync::Barrier::new(4);
+    std::thread::scope(|scope| {
+        let calls: Vec<_> = (0..4)
+            .map(|_| {
+                scope.spawn(|| {
+                    barrier.wait();
+                    super::install_artifact(root.path(), &artifact)
+                })
+            })
+            .collect();
+        for call in calls {
+            call.join().unwrap().unwrap();
+        }
+    });
+    let version = root.path().join(manifest::LOCKED_NONO_VERSION);
+    assert_eq!(fs::read(version.join("nono")).unwrap(), b"binary-bytes");
+    assert_eq!(fs::read_dir(version).unwrap().count(), 2);
+}
+
+#[tokio::test]
+#[ignore = "requires QN_TEST_NONO_ARCHIVE for the host's pinned release"]
+async fn it_repairs_and_probes_the_real_pinned_binary_offline() {
+    let root = tempfile::tempdir().unwrap();
+    let artifact = manifest::artifact(NonoTarget::current().unwrap()).unwrap();
+    let version = root.path().join(manifest::LOCKED_NONO_VERSION);
+    fs::create_dir_all(&version).unwrap();
+    fs::copy(
+        std::env::var("QN_TEST_NONO_ARCHIVE").unwrap(),
+        version.join(artifact.archive_name),
+    )
+    .unwrap();
+    fs::write(version.join("nono"), b"modified executable").unwrap();
+    let options = super::InstallOptions::new(root.path());
+    let installed = tokio::task::spawn_blocking(move || {
+        let installed = super::install(&options)?;
+        super::install(&options)?;
+        Ok::<_, InstallerError>(installed)
+    })
+    .await
+    .unwrap()
+    .unwrap();
+    crate::verify_version(camino::Utf8Path::from_path(&installed.path).unwrap())
+        .await
+        .unwrap();
 }
 
 #[test]

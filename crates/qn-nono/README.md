@@ -42,8 +42,10 @@
 - 安装调用方可在 `install` 返回后显式调用 `verify_version`；尚未接入 CLI/doctor，
   `install` 本身保持同步下载安装语义。版本字符串检查不能证明文件完整性。
 
-- 安装幂等：目标路径已存在 `nono` 时直接复用，不重新校验（完整性复核由
-  `qn doctor` 在 runner 落地后承担；当前版本探测不替代缓存完整性检查）。
+- 安装完整性（#58）：每次复制缓存归档到独立临时目录，核对锁版 SHA-256 后重新提取并发布
+  `nono`，恢复字节及归档权限。归档缓存位于 `<install_root>/<version>/<archive_name>`；
+  缺失时下载并验证，损坏时拒绝返回成功。旧安装首次需要联网取得归档；有效缓存可离线修复。
+  不同平台目标必须使用不同 install root；校验不抵御返回后宿主特权进程再次修改文件。
 - 上游 `SHA256SUMS.txt` 是哈希清单而非签名；签名校验方案在 08 落地时评估。
 
 ## 版本契约测试
@@ -57,6 +59,12 @@ QN_TEST_NONO=/absolute/path/to/nono cargo test --locked -p qn-nono --test versio
 此测试只验证版本调用契约，不等同于沙箱隔离、凭证或 Agent E2E 验收。
 `cargo test --locked -p qn-nono --test version_environment` 使用合成 canary 和自重执行的
 Rust 测试程序验证实际探测路径不继承环境；不修改宿主环境，也不代表 #27 的 sandbox run 已接入。
+
+macOS / Linux 离线验证已下载的锁版归档，安装器会自行校验 SHA-256 并修复合成损坏文件：
+
+```sh
+QN_TEST_NONO_ARCHIVE=/absolute/path/to/nono-release.tar.gz cargo test --locked -p qn-nono --lib installer::tests::it_repairs_and_probes_the_real_pinned_binary_offline -- --ignored --exact
+```
 
 ## macOS 协议实测
 
