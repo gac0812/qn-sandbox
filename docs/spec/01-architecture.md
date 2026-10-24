@@ -125,6 +125,10 @@ B/C 的个人审批不作已取得处理。采用 #14 的选项 2：领域模型
 受管进程（#65）由 infra 暴露 `ProcessPolicy` 与拥有子进程/读任务的句柄，bootstrap 装配
 Unix 进程组或 Windows Job Object。取消/超时先终止再回收；父进程已回收且无稳定组句柄时
 拒绝用数字 PID/PGID 补杀，返回清理未确认。该机制不声称限制主动脱离进程组的后代。
+2026-10-25 的 #92 集成实测进一步确认：即使后代未主动脱组，关闭继承 stdio 后也可在
+父进程 Exited(0) 后继续执行。因此 ManagedOutput、原生 Exited 与输出 EOF 均不能单独
+映射为 core Stopped；生产接入必须提供整个受管执行树的清理证据。可复现反例和实验范围见
+[受管 runner 集成验证](../dev-notes/owned-runner-integration.md)。
 
 证据到实现的对应关系：#46 的用户 default 覆盖 → 隔离配置根；#52 的强杀残留 → 停止清理验证；
 #46 的零缓存撤销 → 按请求检查 grant；#48 的 stderr 歧义 → 显式证据来源与完整性。
