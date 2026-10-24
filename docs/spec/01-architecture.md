@@ -122,6 +122,7 @@ B/C 的个人审批不作已取得处理。采用 #14 的选项 2：领域模型
 
 `AuditLog` 在总图中表示审计能力方向，待具体事件写入/读取使用方确定后再引入 port；
 不为补齐图示而添加无使用方接口。生产 provider 后端与进程清理机制必须经锁版实测再启用。
+
 受管进程（#65）由 infra 暴露 `ProcessPolicy` 与拥有子进程/读任务的句柄，bootstrap 装配
 Unix 进程组或 Windows Job Object。取消/超时先终止再回收；父进程已回收且无稳定组句柄时
 拒绝用数字 PID/PGID 补杀，返回清理未确认。该机制不声称限制主动脱离进程组的后代。
@@ -129,6 +130,15 @@ Unix 进程组或 Windows Job Object。取消/超时先终止再回收；父进�
 证据到实现的对应关系：#46 的用户 default 覆盖 → 隔离配置根；#52 的强杀残留 → 停止清理验证；
 #46 的零缓存撤销 → 按请求检查 grant；#48 的 stderr 歧义 → 显式证据来源与完整性。
 这些前期实测不是完整 Agent、broker 或跨平台 E2E 的完成证明。
+
+### 4.2 首个审计查询消费者（#110）
+
+本地集成中 CLI 的 audit show/list --session 经 bootstrap 装配 core AuditQuery；qn-broker 实现固定会话
+文件的有界读取。core 只包含封闭呈现类型和查询接口，不依赖 adapter/文件系统。日志源明确
+为 broker、完整性 unverified；区分 empty/open/partial/observed_closed，关闭事件不证明
+沙箱 Stopped、完整送达或防篡改。未知字段、重复字段、错会话、序号缺失/倒退均拒绝；
+只允许尾部未完成行作为 partial 展示。native/fs 拒绝不从 broker 推断，跨源顺序与 follow
+待真实消费者实现。沿用 #14/#47 用户委托授权，不声称 B/C 个人审批；决定见 #110。
 
 ## 5. 数据流（两个代表场景）
 
