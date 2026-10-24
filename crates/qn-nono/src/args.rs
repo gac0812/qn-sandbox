@@ -8,7 +8,7 @@ use std::fmt;
 use camino::{Utf8Path, Utf8PathBuf};
 use qn_core::SessionId;
 
-use crate::InstallerError;
+use crate::NonoError;
 
 /// Whether nono attaches the terminal or leaves its supervisor running.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -67,7 +67,7 @@ impl NonoArgs {
     ///
     /// # Errors
     /// Returns an error for a relative path or a path containing NUL.
-    pub fn profile_validate(profile: &Utf8Path) -> Result<Self, InstallerError> {
+    pub fn profile_validate(profile: &Utf8Path) -> Result<Self, NonoError> {
         validate_path(profile, "profile path")?;
         Ok(Self(vec![
             "profile".into(),
@@ -102,13 +102,13 @@ impl NonoArgs {
     /// # }
     /// # example().unwrap();
     /// ```
-    pub fn run(input: RunArgs) -> Result<Self, InstallerError> {
+    pub fn run(input: RunArgs) -> Result<Self, NonoError> {
         validate_path(&input.profile, "profile path")?;
         validate_path(&input.workdir, "workdir")?;
         if input.command.first().is_none_or(String::is_empty)
             || input.command.iter().any(|arg| arg.contains('\0'))
         {
-            return Err(InstallerError::InvalidArgument { field: "command" });
+            return Err(NonoError::InvalidArgument { field: "command" });
         }
         let mut args = vec![
             "run".into(),
@@ -144,9 +144,9 @@ impl fmt::Debug for NonoArgs {
     }
 }
 
-fn validate_path(path: &Utf8Path, field: &'static str) -> Result<(), InstallerError> {
+fn validate_path(path: &Utf8Path, field: &'static str) -> Result<(), NonoError> {
     if !path.is_absolute() || path.as_str().contains('\0') {
-        return Err(InstallerError::InvalidArgument { field });
+        return Err(NonoError::InvalidArgument { field });
     }
     Ok(())
 }
@@ -155,7 +155,7 @@ fn validate_path(path: &Utf8Path, field: &'static str) -> Result<(), InstallerEr
 mod tests {
     #![allow(clippy::unwrap_used)]
     use super::{NonoArgs, RunArgs, RunMode};
-    use crate::InstallerError;
+    use crate::NonoError;
     use camino::{Utf8Path, Utf8PathBuf};
     use qn_core::SessionId;
 
@@ -271,7 +271,7 @@ mod tests {
                 request.workdir = "relative".into();
             }
             assert!(matches!(NonoArgs::run(request),
-                Err(InstallerError::InvalidArgument { field: actual }) if actual == field));
+                Err(NonoError::InvalidArgument { field: actual }) if actual == field));
         }
         let nul_path = input().profile.into_string() + "\0";
         assert!(NonoArgs::profile_validate(Utf8Path::new(&nul_path)).is_err());
@@ -289,7 +289,7 @@ mod tests {
             request.command = command;
             assert!(matches!(
                 NonoArgs::run(request),
-                Err(InstallerError::InvalidArgument { field: "command" })
+                Err(NonoError::InvalidArgument { field: "command" })
             ));
         }
     }

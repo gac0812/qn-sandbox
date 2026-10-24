@@ -29,9 +29,11 @@ pub mod error;
 pub mod installer;
 pub mod manifest;
 pub mod target;
+pub mod version;
 
 pub use args::{NonoArgs, RunArgs, RunMode};
-pub use error::InstallerError;
+pub use error::{InstallerError, NonoError};
 pub use installer::{InstallOptions, InstalledBinary, install};
 pub use manifest::LOCKED_NONO_VERSION;
 pub use target::NonoTarget;
+pub use version::verify_version;

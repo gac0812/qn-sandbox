@@ -5,9 +5,8 @@
 //! unpack the single root `nono` binary into `<install_root>/<version>/nono`.
 //!
 //! Blocking implementation: callers inside async contexts must wrap `install`
-//! in `spawn_blocking` (AGENTS §4.6). Once `qn-infra::process` (#19) lands,
-//! the runner owns all `nono` CLI invocations, including the post-install
-//! version probe.
+//! in `spawn_blocking` (AGENTS §4.6). Callers can then explicitly await
+//! [`crate::verify_version`] through the shared process runner (#41).
 
 use std::fs::{self, File};
 use std::io::{self, Read};
@@ -73,9 +72,8 @@ pub struct InstalledBinary {
 /// when the archive digest deviates from the manifest, and
 /// [`InstallerError::ArchiveMissingBinary`] / [`InstallerError::Io`] when
 /// unpacking or staging fails.
-// TODO(#19): once qn-infra::process exists, probe `nono --version` after
-// install and map a mismatch against LOCKED_NONO_VERSION to a typed error
-// (spike ③ §5); planned together with the M1 runner work.
+// TODO(#14): wire verify_version into the future adapter startup after the
+// shared engine contract is agreed; install stays synchronous and install-only.
 pub fn install(options: &InstallOptions) -> Result<InstalledBinary, InstallerError> {
     let artifact = resolve_artifact(options)?;
     let version_dir = options.install_root.join(manifest::LOCKED_NONO_VERSION);

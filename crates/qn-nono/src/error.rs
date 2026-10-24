@@ -1,13 +1,13 @@
-//! Typed failures of the nono installer.
+//! Typed failures of the nono installer and version probe.
 //!
 //! Every variant carries an actionable message; the source chain is kept
 //! where an underlying cause exists (AGENTS §4.4).
 
 use std::io;
 
-/// Failures while downloading, verifying, or unpacking the locked `nono` release.
+/// Failures while installing or probing the locked `nono` release.
 #[derive(Debug, thiserror::Error)]
-pub enum InstallerError {
+pub enum NonoError {
     /// An invocation argument is invalid; its value is never echoed.
     #[error(
         "invalid nono {field}; use absolute UTF-8 paths and a nonempty command without NUL bytes"
@@ -15,6 +15,36 @@ pub enum InstallerError {
     InvalidArgument {
         /// Static field name identifying the invalid input.
         field: &'static str,
+    },
+
+    /// A relative executable path could resolve through the user's PATH.
+    #[error("nono executable path must be absolute; use the managed installation path")]
+    RelativeExecutable,
+
+    /// The process did not exit successfully; untrusted output is not echoed.
+    #[error("nono version probe failed with exit code {code:?}; check the managed installation")]
+    VersionProbeFailed {
+        /// Exit code, or None when terminated by a signal.
+        code: Option<i32>,
+    },
+
+    /// The version response was incomplete or did not follow the CLI contract.
+    #[error("invalid or incomplete nono version response; reinstall the pinned binary")]
+    InvalidVersionOutput,
+
+    /// The binary reports a different version from the workspace pin.
+    #[error("nono version does not match {expected}; reinstall the pinned binary")]
+    VersionMismatch {
+        /// The version required by qn-config.
+        expected: &'static str,
+    },
+
+    /// The shared runner failed to spawn, wait for, or finish the probe.
+    #[error("nono version probe could not complete; check the managed installation: {source}")]
+    Process {
+        /// Original process error, including timeout and OS failures.
+        #[from]
+        source: qn_infra::Error,
     },
 
     /// The host platform (or explicit target) has no artifact in the locked
@@ -83,3 +113,6 @@ pub enum InstallerError {
         source: io::Error,
     },
 }
+
+/// Compatibility name for existing installer callers.
+pub type InstallerError = NonoError;

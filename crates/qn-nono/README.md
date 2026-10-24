@@ -10,6 +10,7 @@
 | --- | --- | --- |
 | `installer` | 锁版 manifest（v0.80.0 + 各平台 SHA-256）、下载、校验、解包安装到 `<install_root>/<version>/nono` | M0 骨架（本期） |
 | `args` | version / profile validate / run 的受限参数构造；固定诊断开关和命令分隔符 | A-0.5（#43） |
+| `version` | 显式绝对路径调用 `nono --version`，锁版比对、5 秒超时、单流 1 KiB 输出上限 | A-0.5 首片（#41） |
 | `runner` | 经 `qn-infra::process`（#19）调用 nono CLI + 契约测试 | M1（未开始） |
 | `profile_gen` | core Profile → nono profile JSON | M1（未开始） |
 | `audit_tail` / `why` | 审计流采集、拒绝原因透传 | M1（未开始） |
@@ -33,7 +34,22 @@
   等不能成为 nono 选项。分隔符后的同名参数属于 Agent，按原样保留，不代表凭证可放进 argv。
 - 参数构造不校验 profile 内容或来源；runner 在执行前仍须验证 profile 的默认拒绝、环境白名单、
   凭证约束与来源，并完成 #27 环境清理。此片未实现 runner 或冻结 #14 ports。
+- `verify_version(&Utf8Path)` 是异步只读探测，全部经 `qn-infra::process`；
+  不搜索 PATH，不拉起沙箱。相对路径、非零退出、截断/异常输出、版本不符均拒绝。
+  缺失二进制和超时保留原始进程错误；版本响应不会进入本 crate 的错误信息。
+- 安装调用方可在 `install` 返回后显式调用 `verify_version`；尚未接入 CLI/doctor，
+  `install` 本身保持同步下载安装语义。版本字符串检查不能证明文件完整性。
 
 - 安装幂等：目标路径已存在 `nono` 时直接复用，不重新校验（完整性复核由
-  `qn doctor` 在 runner 落地后承担，TODO #19）。
+  `qn doctor` 在 runner 落地后承担；当前版本探测不替代缓存完整性检查）。
 - 上游 `SHA256SUMS.txt` 是哈希清单而非签名；签名校验方案在 08 落地时评估。
+
+## 版本契约测试
+
+默认单测不依赖网络。macOS / Linux 手动验证已校验 SHA-256 的锁版二进制：
+
+```sh
+QN_TEST_NONO=/absolute/path/to/nono cargo test --locked -p qn-nono --test version_contract -- --ignored
+```
+
+此测试只验证版本调用契约，不等同于沙箱隔离、凭证或 Agent E2E 验收。
