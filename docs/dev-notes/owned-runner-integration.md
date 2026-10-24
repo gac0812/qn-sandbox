@@ -93,4 +93,3 @@ cargo test --locked --workspace、RUSTDOCFLAGS='-D warnings' cargo doc --locked 
 生产接入前仍需：完整后代所有权/清理证明（#93）、注册表与重复 ID 处理、核心 port、宿主 capture/provider、
 审计呈现与事件完整性、CLI/控制面、在线官方 Agent 和 Windows/WSL 验收。P1/P2 全范围仍在 #82。
 不通过增加权限、猜测 PID 或把清理未知包装成成功来缩小这些要求。
-
