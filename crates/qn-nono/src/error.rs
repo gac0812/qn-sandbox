@@ -1,4 +1,4 @@
-//! Typed failures of the nono installer and version probe.
+//! Typed failures of locked nono installation and CLI operations.
 //!
 //! Every variant carries an actionable message; the source chain is kept
 //! where an underlying cause exists (AGENTS §4.4).
@@ -8,6 +8,20 @@ use std::io;
 /// Failures while installing, probing, or parsing the locked `nono` release.
 #[derive(Debug, thiserror::Error)]
 pub enum NonoError {
+    /// A bounded native query exited unsuccessfully; raw output is omitted.
+    #[error("nono {operation} failed with exit code {code:?}; check the managed state")]
+    CommandFailed {
+        /// Static operation label.
+        operation: &'static str,
+        /// Native exit code, absent when signalled.
+        code: Option<i32>,
+    },
+    /// The native query exceeded its time limit.
+    #[error("nono {operation} timed out; check the managed state before retrying")]
+    CommandTimedOut {
+        /// Static operation label.
+        operation: &'static str,
+    },
     /// A native session identifier is not a full pinned-format ID.
     #[error(
         "invalid nono session ID; use a full 16-character lowercase hex ID from local session records"
@@ -66,8 +80,8 @@ pub enum NonoError {
         expected: &'static str,
     },
 
-    /// The shared runner failed to spawn, wait for, or finish the probe.
-    #[error("nono version probe could not complete; check the managed installation: {source}")]
+    /// The shared runner failed to spawn, wait for, or finish a command.
+    #[error("nono command could not complete; check the managed installation: {source}")]
     Process {
         /// Original process error, including timeout and OS failures.
         #[from]

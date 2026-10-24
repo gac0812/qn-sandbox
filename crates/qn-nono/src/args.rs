@@ -147,7 +147,7 @@ impl fmt::Debug for NonoArgs {
     }
 }
 
-fn validate_path(path: &Utf8Path, field: &'static str) -> Result<(), NonoError> {
+pub(crate) fn validate_path(path: &Utf8Path, field: &'static str) -> Result<(), NonoError> {
     if !path.is_absolute() || path.as_str().contains('\0') {
         return Err(NonoError::InvalidArgument { field });
     }

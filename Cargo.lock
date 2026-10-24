@@ -654,6 +654,7 @@ dependencies = [
  "camino",
  "flate2",
  "hex",
+ "process-wrap",
  "qn-config",
  "qn-core",
  "qn-infra",
@@ -664,6 +665,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+ "tokio-util",
  "ureq",
 ]
 
