@@ -1,0 +1,35 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/qn-bootstrap",
+    "crates/qn-broker",
+    "crates/qn-cli",
+    "crates/qn-config",
+    "crates/qn-core",
+    "crates/qn-daemon",
+    "crates/qn-gateway",
+    "crates/qn-infra",
+    "crates/qn-mcp",
+    "crates/qn-nono",
+    "crates/qn-ui",
+    "crates/qn-vm",
+    "crates/qn-wsl",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+publish = false
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+module_name_repetitions = "allow"
+cognitive_complexity = "warn"
