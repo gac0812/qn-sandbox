@@ -58,3 +58,11 @@ QN_TEST_NONO=/absolute/path/to/nono cargo test --locked -p qn-nono --test versio
 
 Issue #46 的隔离探测命令、结果和限制见 [spike ②](../../docs/dev-notes/spike-02-nono-macos.md)。
 仅用于合成数据研究；examples/probe 不可作为生产 runner，生产前置仍包括 #14 / #27。
+
+## 内部协议解析（#48）
+
+wire 模块按 #46 的 nono 0.80.0 实测 fixture 解析 profile、ps/inspect、audit list/show 和混合 stderr 诊断。
+字段未知可兼容；必需字段缺失/错型、截断、超限、歧义拒绝。错误和 Debug 不回显载荷。
+解析不判断退出成功、不推断 Denial、不将 wire 状态映射到 core；未来 runner 仍须处理进程结果。
+诊断只保证结构，不保证来源：child stderr 可伪造 JSON，#47 确认审计可信来源前不能把它当授权依据。
+模块暂时 crate-private、无生产调用；限定 dead_code 豁免待 #14 首个 consumer 接入后移除。

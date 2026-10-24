@@ -5,9 +5,26 @@
 
 use std::io;
 
-/// Failures while installing or probing the locked `nono` release.
+/// Failures while installing, probing, or parsing the locked `nono` release.
 #[derive(Debug, thiserror::Error)]
 pub enum NonoError {
+    /// Bounded output could not satisfy the pinned protocol contract.
+    #[error("invalid nono {operation} response: {reason}; check the pinned binary")]
+    Protocol {
+        /// Static operation name, never command arguments.
+        operation: &'static str,
+        /// Static rejection category, never raw output.
+        reason: &'static str,
+    },
+    /// JSON source is retained behind a redacted error boundary.
+    #[error("invalid nono {operation} JSON; check the pinned binary: {source}")]
+    ProtocolJson {
+        /// Static operation name.
+        operation: &'static str,
+        /// Parser cause with input values removed from all formatting.
+        #[source]
+        source: ProtocolJsonError,
+    },
     /// An invocation argument is invalid; its value is never echoed.
     #[error(
         "invalid nono {field}; use absolute UTF-8 paths and a nonempty command without NUL bytes"
@@ -116,3 +133,24 @@ pub enum NonoError {
 
 /// Compatibility name for existing installer callers.
 pub type InstallerError = NonoError;
+
+/// Retains the parser cause without exposing payloads in Display, Debug or chains.
+/// serde data errors may quote untrusted values, so the inner cause is private.
+pub struct ProtocolJsonError(pub(crate) serde_json::Error);
+impl std::fmt::Display for ProtocolJsonError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{:?} at line {} column {}",
+            self.0.classify(),
+            self.0.line(),
+            self.0.column()
+        )
+    }
+}
+impl std::fmt::Debug for ProtocolJsonError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self, f)
+    }
+}
+impl std::error::Error for ProtocolJsonError {}
