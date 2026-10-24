@@ -257,7 +257,7 @@ GitHub Issue 是任务的唯一入口，`main` 是唯一集成分支。除仓库
 
 ### 8.3 PR：尽早暴露，保持可审查
 
-- 第一个可用提交后即可创建 Draft PR，禁止完成后才一次性推送全部工作。
+- 第一个可评审提交后直接创建正式 PR，不使用 Draft PR；禁止完成后才一次性推送全部工作。
 - PR 标题必须是英文，并遵循 Conventional Commits；PR 正文可使用中文。
 - PR 必须关联 Issue，使用 `Closes #<issue>`；PR 范围必须与 Issue 一致。
 - PR 的 diff 原则上 ≤ 400 行（lockfile、生成代码和机械迁移不计）。超限时拆 PR，
