@@ -17,11 +17,16 @@ fn command(mode: &str) -> Result<CmdSpec, Box<dyn Error>> {
         .into_os_string()
         .into_string()
         .map_err(|_| "UTF-8 executable required")?;
-    Ok(CmdSpec::new(exe)
+    let mut spec = CmdSpec::new(exe)
         .arg(mode)
         .env_clear()
-        .timeout(Duration::from_secs(5))
-        .max_output_bytes(64))
+        .timeout(Duration::from_secs(20))
+        .max_output_bytes(64);
+    // Windows DLL/network initialization needs this explicit nonsecret allowlist item.
+    if cfg!(windows) {
+        spec = spec.env("SystemRoot", std::env::var("SystemRoot")?);
+    }
+    Ok(spec)
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -41,7 +46,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
         Some("worker") => {
             let addr = std::env::args().nth(2).ok_or("address required")?;
-            process::run(&command("leaf")?.arg(addr)).await?;
+            process::run_checked(&command("leaf")?.arg(addr)).await?;
         }
         _ => verify().await?,
     }
@@ -83,11 +88,23 @@ async fn verify_cleanup() -> Result<(), Box<dyn Error>> {
     let policy = qn_bootstrap::process_policy();
     for mode in ["cancel", "timeout", "drop"] {
         let listener = TcpListener::bind("127.0.0.1:0").await?;
-        let child = spawn_managed(
-            &command("worker")?.arg(listener.local_addr()?.to_string()),
-            &policy,
-        )?;
-        let (mut peer, _) = timeout(Duration::from_secs(10), listener.accept()).await??;
+        let mut spec = command("worker")?.arg(listener.local_addr()?.to_string());
+        if mode == "timeout" {
+            spec = spec.timeout(Duration::from_secs(5));
+        }
+        let child = spawn_managed(&spec, &policy)?;
+        let (mut peer, _) = match timeout(Duration::from_secs(10), listener.accept()).await {
+            Ok(accepted) => accepted?,
+            Err(error) => {
+                let output = child.wait(CancellationToken::new()).await?;
+                return Err(format!(
+                    "fixture readiness failed: {error}; exit {:?}; {}",
+                    output.output().exit_code,
+                    output.output().stderr
+                )
+                .into());
+            }
+        };
         let mut ready = [0];
         timeout(Duration::from_secs(3), peer.read_exact(&mut ready)).await??;
         assert_eq!(ready, *b"R");
