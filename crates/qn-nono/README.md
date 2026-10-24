@@ -53,3 +53,8 @@ QN_TEST_NONO=/absolute/path/to/nono cargo test --locked -p qn-nono --test versio
 ```
 
 此测试只验证版本调用契约，不等同于沙箱隔离、凭证或 Agent E2E 验收。
+
+## macOS 协议实测
+
+Issue #46 的隔离探测命令、结果和限制见 [spike ②](../../docs/dev-notes/spike-02-nono-macos.md)。
+仅用于合成数据研究；examples/probe 不可作为生产 runner，生产前置仍包括 #14 / #27。
