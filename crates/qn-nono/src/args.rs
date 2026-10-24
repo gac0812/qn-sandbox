@@ -10,6 +10,9 @@ use qn_core::SessionId;
 
 use crate::NonoError;
 
+mod session;
+pub use session::{NonoSessionId, NonoStopMode};
+
 /// Whether nono attaches the terminal or leaves its supervisor running.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RunMode {

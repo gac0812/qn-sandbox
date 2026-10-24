@@ -10,6 +10,7 @@
 | --- | --- | --- |
 | `installer` | 锁版 manifest（v0.80.0 + 各平台 SHA-256）、下载、校验、解包安装到 `<install_root>/<version>/nono` | M0 骨架（本期） |
 | `args` | version / profile validate / run 的受限参数构造；固定诊断开关和命令分隔符 | A-0.5（#43） |
+| `args::session` | 本地 ps/inspect/stop/audit list/show 参数；完整 native ID 与固定选项边界 | A-0.5（#52） |
 | `version` | 显式绝对路径调用 `nono --version`，锁版比对、5 秒超时、单流 1 KiB 输出上限 | A-0.5 首片（#41） |
 | `runner` | 经 `qn-infra::process`（#19）调用 nono CLI + 契约测试 | M1（未开始） |
 | `profile_gen` | core Profile → nono profile JSON | M1（未开始） |
@@ -58,3 +59,24 @@ QN_TEST_NONO=/absolute/path/to/nono cargo test --locked -p qn-nono --test versio
 
 Issue #46 的隔离探测命令、结果和限制见 [spike ②](../../docs/dev-notes/spike-02-nono-macos.md)。
 仅用于合成数据研究；examples/probe 不可作为生产 runner，生产前置仍包括 #14 / #27。
+
+## 会话命令契约（#52）
+
+`NonoArgs` 的 `sessions/inspect/stop/audit_list/audit_show` 只构造 argv；查询固定 JSON，
+`sessions` 包含 exited 记录且不支持 remote。`args::NonoSessionId` 仅接收当前锁版生成的
+16 位小写 hex ID；它不是 core `SessionId`，runner 须从受管记录关联并验证归属，不接受名称、
+前缀或旧式日期审计 ID。停止宽限期只接受 1–300 整秒，不静默舍入；退出码不证明后代已清理。
+
+`session_contract` 是默认忽略的 macOS 真机测试，先编译并从 JSON 取得测试可执行文件：
+
+```sh
+cargo test --locked -p qn-nono --test session_contract --no-run --message-format=json
+```
+
+在 `/Users/Shared` 下新建 0700 空目录作为 `QN_TEST_ROOT`，创建 `home/config/state/cache/tmp`，
+以清空后重建的环境启动测试二进制 `--ignored`：`HOME/XDG_CONFIG_HOME/XDG_STATE_HOME/
+XDG_CACHE_HOME/TMPDIR` 分别指向这些子目录，`PATH=/usr/bin:/bin`、`LANG=en_US.UTF-8`，
+`QN_TEST_NONO` 指向已核对归档及二进制 SHA-256 的锁版 nono。测试会创建两次 sleep 会话；
+结束或失败后检查 `cleanup.json` 中的 PID 并清理仍存活的测试进程，不能只看 ps 的 exited。
+本轮复现 #47 的 force 残留，并观察到强杀后审计元数据缺失；审计详情契约仅在正常停止后断言。
+此测试只验证 CLI 契约，不代表 #14/#27/#47 或生产 Agent、安全撤销 E2E 已完成。

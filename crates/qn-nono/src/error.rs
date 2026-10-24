@@ -8,6 +8,16 @@ use std::io;
 /// Failures while installing or probing the locked `nono` release.
 #[derive(Debug, thiserror::Error)]
 pub enum NonoError {
+    /// A native session identifier is not a full pinned-format ID.
+    #[error(
+        "invalid nono session ID; use a full 16-character lowercase hex ID from local session records"
+    )]
+    InvalidNonoSessionId,
+
+    /// A graceful stop cannot be represented as a bounded whole-second wait.
+    #[error("invalid nono stop timeout; use 1 to 300 whole seconds")]
+    InvalidStopTimeout,
+
     /// An invocation argument is invalid; its value is never echoed.
     #[error(
         "invalid nono {field}; use absolute UTF-8 paths and a nonempty command without NUL bytes"
