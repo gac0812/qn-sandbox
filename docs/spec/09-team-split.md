@@ -1,6 +1,6 @@
 # 09 — 三人协作分工（thin product on nono）
 
-状态：Draft（成员 B、C 已认领；成员 A 待认领） · 2026-10-24
+状态：Draft（成员 A、B、C 均已认领） · 2026-10-24
 
 ## 1. 分工原则
 
@@ -14,7 +14,7 @@
 
 | | 成员 A | 成员 B | 成员 C |
 | --- | --- | --- | --- |
-| **认领（GitHub id）** | 待认领 | **[gac0812](https://github.com/gac0812)** | **[Weiki886](https://github.com/Weiki886)** |
+| **认领（GitHub id）** | **[laitekin](https://github.com/laitekin)** | **[gac0812](https://github.com/gac0812)** | **[Weiki886](https://github.com/Weiki886)** |
 | **主责领域** | 引擎适配 + macOS + profiles | Windows 供给链路 + 安全演示 | 控制面 + MCP gateway + SDK |
 | **主要 crate** | `qn-nono`、`profiles/`、`qn-broker`（phantom 代理包装） | `qn-wsl`、攻击演示与审计剧本 | `qn-daemon`、`qn-cli`、`qn-ui`、`qn-mcp`、`qn-gateway`、SDK |
 | **横切线** | nono 上游跟版与回馈（04 §6 锁版纪律） | 安全条款（08）落实与评审 | 架构与依赖方向守门（R3/R6、deny ban） |
