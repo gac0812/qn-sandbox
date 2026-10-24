@@ -7,6 +7,9 @@
 | --- | --- | --- |
 | **nono** | 我们采用的开源安全内核（[nolabs-ai/nono](https://github.com/nolabs-ai/nono)，Apache-2.0）：Landlock/Seatbelt 进程沙箱、phantom token 凭证代理、L7 网络规则、防篡改审计；只经 `qn-nono` 适配器使用，锁版本跟版 | 引擎/沙箱（泛指时） |
 | **Session** | 一次受限进程环境的运行实例（`SandboxEngine::run` 产物） | Sandbox/VM/Box（旧模型词，不再用于进程级形态） |
+| **ProfileRef** | 受管策略的规范 `namespace/name` 标识；不是文件路径，也不代表策略已授权 | profile path |
+| **RunSpec** | core 的已校验启动输入：SessionId、ProfileRef、argv、workdir 与可选 GrantHandle | raw nono args |
+| **GrantHandle** | 不含凭证明文的授权记录标识；有效性、作用域与撤销由 broker 检查 | API key / authentication proof |
 | **Profile（Agent profile）** | 预装某 Agent CLI 与最小权限默认值（fs/网络/凭证绑定）的策略包（nono profile，JSON 可组合）；仓库维护官方 profile 于 `profiles/` | docker image / template |
 | **Seatbelt / Landlock** | nono 所用的内核强制原语：macOS Seatbelt（10.5+）；Linux Landlock（fs ≥5.13，fs+网络 ≥6.7） | 沙箱（混用） |
 | **强隔离模式（Strong-isolation mode）** | P2 可选高档模式：独立 VM + guest 内 nono | 默认沙箱 |

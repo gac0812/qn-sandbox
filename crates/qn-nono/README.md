@@ -36,6 +36,8 @@
   等不能成为 nono 选项。分隔符后的同名参数属于 Agent，按原样保留，不代表凭证可放进 argv。
 - 参数构造不校验 profile 内容或来源；runner 在执行前仍须验证 profile 的默认拒绝、环境白名单、
   凭证约束与来源，并完成 #27 环境清理。此片未实现 runner 或冻结 #14 ports。
+- `RunArgs::from_spec`（#72）消费 core `RunSpec`，profile 路径由 adapter 解析后提供；grant 句柄不进入 argv，
+  实际授权及 provider 绑定必须由运行路径另行完成，不能把结构校验当作授权。
 - `verify_version(&Utf8Path)` 是异步只读探测，全部经 `qn-infra::process`；
   不搜索 PATH，不拉起沙箱；通过 `env_clear()` 启动空环境子进程，避免继承宿主凭证（#56）。
   相对路径、非零退出、截断/异常输出、版本不符均拒绝。

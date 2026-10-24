@@ -7,6 +7,22 @@ use crate::domain::session::SessionState;
 /// Errors produced by core domain rules.
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum Error {
+    /// The managed profile identifier is malformed.
+    #[error(
+        "invalid profile reference; use lowercase namespace/name components of 1 to 64 letters, digits, underscores or hyphens"
+    )]
+    InvalidProfileRef,
+    /// The opaque grant identifier is malformed.
+    #[error("invalid grant handle; expected grt- followed by a canonical UUID v7")]
+    InvalidGrantHandle,
+    /// Launch input fails a structural constraint; values are not echoed.
+    #[error(
+        "invalid run {field}; use an absolute UTF-8 workdir and nonempty argv without NUL bytes"
+    )]
+    InvalidRunInput {
+        /// Static field identifier.
+        field: &'static str,
+    },
     /// A session identifier is not a canonical UUID v7 with the `sxn-` prefix.
     #[error(
         "invalid session id; expected `sxn-` followed by a lowercase UUID v7 with an RFC 4122-compatible variant"
