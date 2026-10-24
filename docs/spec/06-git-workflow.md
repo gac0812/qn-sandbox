@@ -31,7 +31,7 @@ main                 # 始终可发布；保护：PR + CI 绿 + ≥1 人类 revi
 | fix | 缺陷修复 | 同上；跨 crate 用 `core,daemon` |
 | refactor / test / docs / chore | — | 依赖变更必用 `chore(deps)`；nono 升级用 `chore(deps)` + 分支类型 `deps` |
 
-- AI 提交正文追加 `Co-authored-by: <agent标识>`；不伪造人类作者。
+- 一个提交一件事。
 - **AI 不 push `main`、不自行合并。**
 
 ## 3. PR 规范
