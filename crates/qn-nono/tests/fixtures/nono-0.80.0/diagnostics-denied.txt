@@ -1,0 +1,73 @@
+
+  nono v0.80.0
+  Capabilities:
+  ────────────────────────────────────────────────────
+   r+w  /fixture/project (dir)
+       + 34 system/group paths (-v to show)
+   net  outbound blocked
+  ────────────────────────────────────────────────────
+
+  Applying sandbox...
+
+cat: /fixture/home/.ssh/canary: Operation not permitted
+{
+  "session": {
+    "exit_code": 1,
+    "denials": [
+      {
+        "path": "/fixture/home/.ssh/canary",
+        "access": "Read",
+        "reason": "PolicyBlocked"
+      }
+    ],
+    "ipc_denials": [],
+    "violations": [
+      {
+        "operation": "file-read-data",
+        "target": "/fixture/home/.ssh/canary"
+      }
+    ],
+    "diagnostics": [
+      {
+        "code": "sandbox_denied_path",
+        "severity": "warning",
+        "message": "access to /fixture/home/.ssh/canary (read) denied: PolicyBlocked",
+        "remediation": {
+          "kind": "grant_path",
+          "path": "/fixture/home/.ssh/canary",
+          "access": "Read",
+          "is_file": true
+        },
+        "path": "/fixture/home/.ssh/canary",
+        "access": "Read",
+        "detail": {
+          "kind": "supervised_denial",
+          "reason": "PolicyBlocked"
+        }
+      },
+      {
+        "code": "command_failed_likely_sandbox",
+        "severity": "info",
+        "message": "discover additional paths required by the command",
+        "remediation": {
+          "kind": "run_discovery"
+        }
+      },
+      {
+        "code": "command_failed_application",
+        "severity": "info",
+        "message": "inspect sandbox policy for a specific path",
+        "remediation": {
+          "kind": "check_policy"
+        }
+      }
+    ]
+  }
+}
+
+Command exited with code 1.
+
+Sandbox denial: 1 path blocked.
+  /fixture/home/.ssh/canary (read)  [permanently restricted]
+
+1 path is permanently restricted — override via a user profile with filesystem.bypass_protection.
