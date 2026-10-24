@@ -7,8 +7,10 @@ use crate::domain::session::SessionState;
 /// Errors produced by core domain rules.
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum Error {
-    /// A session identifier does not match `sxn-` followed by a UUID v7.
-    #[error("invalid session id; expected `sxn-` followed by a UUID v7")]
+    /// A session identifier is not a canonical UUID v7 with the `sxn-` prefix.
+    #[error(
+        "invalid session id; expected `sxn-` followed by a lowercase UUID v7 with an RFC 4122-compatible variant"
+    )]
     InvalidSessionId,
 
     /// A requested session state change is not part of the lifecycle contract.

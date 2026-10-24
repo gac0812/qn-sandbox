@@ -2,13 +2,14 @@
 
 use core::fmt;
 
-use uuid::Uuid;
+use uuid::{Uuid, Variant};
 
 use crate::error::{Error, Result};
 
 /// Stable identifier for one restricted process session.
 ///
-/// Values use the `sxn-` prefix followed by a UUID v7:
+/// Values use the `sxn-` prefix followed by a canonical lowercase UUID v7
+/// with an RFC 4122-compatible variant:
 ///
 /// ```
 /// let id = qn_core::SessionId::new();
@@ -38,7 +39,10 @@ impl TryFrom<&str> for SessionId {
         let raw = value.strip_prefix("sxn-").ok_or(Error::InvalidSessionId)?;
         let uuid = Uuid::parse_str(raw).map_err(|_| Error::InvalidSessionId)?;
 
-        if uuid.get_version_num() != 7 {
+        if uuid.get_version_num() != 7
+            || uuid.get_variant() != Variant::RFC4122
+            || uuid.to_string() != raw
+        {
             return Err(Error::InvalidSessionId);
         }
 
@@ -115,7 +119,7 @@ impl fmt::Display for SessionState {
 #[cfg(test)]
 mod tests {
     use super::{Error, SessionId, SessionState};
-    use uuid::{Uuid, Version};
+    use uuid::{Uuid, Variant, Version};
 
     const STATES: [SessionState; 4] = [
         SessionState::Starting,
@@ -140,6 +144,16 @@ mod tests {
             Some(Version::SortRand),
             "generated session id {id} should use UUID v7"
         );
+        assert_eq!(
+            uuid.get_variant(),
+            Variant::RFC4122,
+            "generated session id {id} should use the RFC 4122-compatible variant"
+        );
+        assert_eq!(
+            uuid.to_string(),
+            raw,
+            "generated session id {id} should use canonical lowercase UUID text"
+        );
     }
 
     #[test]
@@ -160,12 +174,24 @@ mod tests {
             ("missing prefix", "0190f2f8-2b0a-7f5e-9a3c-4b5d6e7f8091"),
             ("invalid uuid", "sxn-not-a-uuid"),
             ("uuid v4", "sxn-0190f2f8-2b0a-4f5e-9a3c-4b5d6e7f8091"),
+            (
+                "non-RFC variant",
+                "sxn-0190f2f8-2b0a-7f5e-4a3c-4b5d6e7f8091",
+            ),
+            ("unhyphenated uuid", "sxn-0190f2f82b0a7f5e9a3c4b5d6e7f8091"),
+            ("braced uuid", "sxn-{0190f2f8-2b0a-7f5e-9a3c-4b5d6e7f8091}"),
+            (
+                "urn uuid",
+                "sxn-urn:uuid:0190f2f8-2b0a-7f5e-9a3c-4b5d6e7f8091",
+            ),
+            ("uppercase uuid", "sxn-0190F2F8-2B0A-7F5E-9A3C-4B5D6E7F8091"),
         ];
 
         for (case, raw) in cases {
-            assert!(
-                SessionId::try_from(raw).is_err(),
-                "session id parser should reject {case}: {raw}"
+            assert_eq!(
+                SessionId::try_from(raw),
+                Err(Error::InvalidSessionId),
+                "session id parser should reject {case} with InvalidSessionId: {raw}"
             );
         }
     }
