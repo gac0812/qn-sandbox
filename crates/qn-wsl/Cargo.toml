@@ -7,8 +7,8 @@ publish.workspace = true
 description = "Windows WSL2 provisioning adapter for qn-sandbox (health probes first)"
 
 [dependencies]
-qn-config = { path = "../qn-config" }
-qn-infra = { path = "../qn-infra" }
+qn-config = { path = "../qn-config", version = "0.1.0" }
+qn-infra = { path = "../qn-infra", version = "0.1.0" }
 thiserror = "2"
 tokio = { version = "1", features = ["rt", "macros"] }
 
