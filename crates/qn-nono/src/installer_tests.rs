@@ -241,4 +241,9 @@ fn installs_real_release() {
         installed.path,
         root.join(manifest::LOCKED_NONO_VERSION).join("nono")
     );
+    let artifact = super::resolve_artifact(&options).unwrap();
+    let cache = root
+        .join(manifest::LOCKED_NONO_VERSION)
+        .join(artifact.archive_name);
+    verify_checksum(&cache, artifact).unwrap();
 }

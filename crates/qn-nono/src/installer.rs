@@ -147,7 +147,12 @@ fn resolve_artifact(options: &InstallOptions) -> Result<&'static ReleaseArtifact
 /// Streams the release archive into the staging directory.
 fn download_to(artifact: &ReleaseArtifact, staging_dir: &Path) -> Result<PathBuf, InstallerError> {
     let url = artifact.download_url();
-    let response = ureq::get(&url)
+    let agent = ureq::AgentBuilder::new()
+        .try_proxy_from_env(true)
+        .https_only(true)
+        .build();
+    let response = agent
+        .get(&url)
         .timeout(Duration::from_secs(120))
         .call()
         .map_err(|source| InstallerError::DownloadFailed {
