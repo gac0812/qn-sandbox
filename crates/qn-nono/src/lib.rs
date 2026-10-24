@@ -13,11 +13,23 @@
 //!   they inject plaintext credentials into the sandbox environment and
 //!   violate the workspace security invariant "credentials never enter the
 //!   sandbox env" (upstream `nono-cli` flags, spike ③ F8).
+//!
+//! # Example
+//!
+//! ```no_run
+//! use qn_nono::{install, InstallOptions};
+//!
+//! let binary = install(&InstallOptions::new("/home/user/.qn/cache"))?;
+//! println!("nono {} installed at {}", binary.version, binary.path.display());
+//! # Ok::<(), qn_nono::InstallerError>(())
+//! ```
 
 pub mod error;
+pub mod installer;
 pub mod manifest;
 pub mod target;
 
 pub use error::InstallerError;
+pub use installer::{InstallOptions, InstalledBinary, install};
 pub use manifest::LOCKED_NONO_VERSION;
 pub use target::NonoTarget;
