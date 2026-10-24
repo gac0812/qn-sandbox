@@ -28,7 +28,7 @@
 ### 安全与产品基座
 | 能力 | 依赖 | 备注 |
 | --- | --- | --- |
-| 安全内核（进程沙箱/凭证代理/L7 网络规则/审计） ⭐ | **nono**（外部单二进制，Apache-2.0） | 只经 `qn-nono` 适配器调用（子进程或 FFI，M0 spike 定）；**锁版本**，升级走独立 PR（06 §5）；五问：Apache-2.0 ✓ / 4.7k stars·1.8k commits·Sigstore 团队 ✓ / macOS 原生+Windows WSL2 ✓ / 单二进制 ✓ / Rust 生态 ✓ |
+| 安全内核（进程沙箱/凭证代理/L7 网络规则/审计） ⭐ | **nono**（外部单二进制，Apache-2.0） | 只经 `qn-nono` 适配器以**子进程调用锁版 `nono` CLI**（不链接 `nono`/`nono-proxy` 库，依据 [spike ③](../dev-notes/spike-03-nono-integration.md)）；**锁版本**，升级走独立 PR（06 §5）；五问：Apache-2.0 ✓ / 4.7k stars·1.8k commits·Sigstore 团队 ✓ / macOS 原生+Windows WSL2 ✓ / 单二进制 ✓ / Rust 生态 ✓ |
 | 桌面壳 ⭐ | **Tauri**（v2） | guardrails 指定；qn-ui 唯一使用；后端逻辑全在 qn-daemon |
 | OS 凭证库 | `keyring` | 仅控制面自身 token/配置用；**Agent 凭证的真实存储跟随 nono 的宿主侧机制**，不建第二套 |
 
