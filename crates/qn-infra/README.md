@@ -17,7 +17,11 @@ Sandbox/Session/Profile 等领域词汇。
 - `CmdSpec` 是 argv 数组 builder，无隐式 shell 解释入口；默认超时 120s、单流捕获 1 MiB。
 - 需要取消传 `CancellationToken`；需要"必须成功"语义用 `run_checked`（非零码 → `Error::Failed`）。
 - stdout/stderr 摘要会进 debug 级 tracing——输出可能含敏感内容的调用方须知此行为（08 §7）。
-- 已知边界（#27）：无 stdin 长会话 API、无 env_clear（qn-nono 接入前补）、kill 不及孙进程。
+- `env_clear()` 清除环境继承及此前显式设置；之后用 `env()` 重建白名单。`env_remove()`
+  移除继承/显式值，之后的 `env()` 可重新设置；按调用顺序执行，大小写语义交给系统。
+- 默认仍继承宿主环境，安全调用方必须显式 `env_clear()`；优先传绝对程序路径，按需设置 PATH。
+  环境编辑的 Debug 隐藏名称和值；这不改变 argv/输出现有的日志策略，不应向其中传入凭证。
+- 已知边界（#27）：环境清理机制已提供，qn-nono 生产接入仍待完成；无 stdin 长会话 API，kill 不及孙进程。
 
 ## 非目标
 
