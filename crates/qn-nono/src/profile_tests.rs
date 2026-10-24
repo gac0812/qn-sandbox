@@ -97,18 +97,24 @@ fn it_can_explicitly_retain_audit_state() {
 #[cfg(unix)]
 #[test]
 fn it_rejects_a_project_containing_a_redirected_credential_directory() {
-    let (_dir, spec, paths) = fixture();
-    fs::remove_dir(paths.host_homes[0].join(".ssh")).unwrap();
-    fs::create_dir(spec.workdir().join("keys")).unwrap();
-    std::os::unix::fs::symlink(
-        spec.workdir().join("keys"),
-        paths.host_homes[0].join(".ssh"),
-    )
-    .unwrap();
-    assert!(matches!(
-        PreparedProfile::prepare(spec, &paths),
-        Err(NonoError::UnsafeWorkdir)
-    ));
+    for name in [".ssh", ".netrc", ".kube", ".docker"] {
+        let (_dir, spec, paths) = fixture();
+        fs::remove_dir(paths.host_homes[0].join(".ssh")).unwrap();
+        let target = spec.workdir().join("keys");
+        if name == ".netrc" {
+            fs::write(&target, "synthetic credential").unwrap();
+        } else {
+            fs::create_dir(&target).unwrap();
+        }
+        std::os::unix::fs::symlink(target, paths.host_homes[0].join(name)).unwrap();
+        assert!(
+            matches!(
+                PreparedProfile::prepare(spec, &paths),
+                Err(NonoError::UnsafeWorkdir)
+            ),
+            "redirected {name} must never become project-readable"
+        );
+    }
 }
 
 fn request(spec: &RunSpec, profile: &str, workdir: &Utf8Path) -> RunSpec {
