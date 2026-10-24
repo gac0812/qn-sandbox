@@ -194,12 +194,131 @@ fs/网络默认拒绝、按 profile 放行；特权动作必须留审计事件�
 
 ---
 
-## 8. Git 与提交（细则见 06；分支命名遵循 CONTRIBUTING）
+## 8. Git、PR 与提交流程（细则见 06，协作底线见 CONTRIBUTING）
 
-- 分支：`<type>/<issue>-<slug>`（`feat/4-credential-broker`、`docs/8-architecture`）；短生命周期。
-- Conventional Commits 英文标题，scope 用 crate 名去 `qn-` 前缀（core/nono/broker/gateway/wsl/daemon/cli/ui/mcp/…）。
-- 一个提交一件事。
-- **AI 不自行合并、不 push `main`**；PR 需 ≥1 人类 review（CONTRIBUTING 要求）。
+GitHub Issue 是任务的唯一入口，`main` 是唯一集成分支。除仓库初始化外，所有变更
+（代码、文档、配置、生成物）都必须经过分支、PR、人类 Review 和 Squash Merge。
+**AI 不 push `main`、不 approve 自己的 PR、不启用 auto-merge、不自行合并。**
+
+### 8.1 开工前：Issue 与分支
+
+1. 必须有一个可执行的 Issue，并写清：背景、目标、非目标、风险等级、验收标准、
+   验证计划、关联 Milestone。缺少任一项时先补 Issue，不开始写代码。
+2. Issue/PR 至少带一个 `P0` / `P1` / `P2` 优先级标签和适用风险标签。
+   优先级标签不是版本号、分支名、文件名或 Git Tag。
+3. 涉及新增/修改 Port、跨 crate 契约、架构级依赖或推翻既有结论时，先开决策 Issue；
+   三人确认并同步 spec 后才能创建实现分支。
+4. 创建分支前同步 `main`：
+
+   ```bash
+   git switch main
+   git fetch origin --prune
+   git pull --ff-only origin main
+   ```
+
+5. 从最新 `main` 创建短分支，命名格式：
+
+   ```text
+   <type>/<issue>-<slug>
+   ```
+
+   允许的 type：`feat`、`fix`、`refactor`、`test`、`docs`、`chore`、`spike`、`deps`。
+   示例：`feat/12-core-ports`、`spike/13-nono-macos`。
+
+6. 一个分支只对应一个 Issue；目标存活时间 ≤ 1 天，硬上限 3 天。超期先
+   rebase 最新 `main` 并拆小，禁止把多个无关任务塞进同一分支。
+7. 不在本地 `main` 上开发，不从过期分支继续切新分支，不建立长期共享集成分支。
+
+### 8.2 Commit：一个提交一个完整意图
+
+- Commit 标题使用英文 Conventional Commits：
+
+  ```text
+  <type>(<scope>): <imperative summary>
+  ```
+
+  scope 使用 crate 名去掉 `qn-` 前缀，例如
+  `core`、`nono`、`broker`、`gateway`、`wsl`、`daemon`、`cli`、`ui`、`mcp`。
+- 正文只在需要时说明动机、取舍和已知限制，不复述 diff。
+- 每个提交必须能独立说明意图，并尽量保持可构建；禁止把格式化、无关重构和功能修改
+  混在同一提交。
+- 提交前必须完成：
+
+  ```bash
+  git diff --check
+  git diff --cached
+  ```
+
+- staged diff 必须人工检查，确认没有真实凭证、Token、`auth.json`、Keychain 导出、
+  `材料/`、宿主配置、构建产物或生成物手改。
+- 只做与 Issue 验收标准直接相关的修改；相邻问题记录为 TODO 或新 Issue（R11）。
+- Review 开始后不擅自改写公共历史。确需 rebase 时先确认没有其他协作者基于该分支工作；
+  共享分支禁止普通 force push，只能使用 `--force-with-lease` 并在 PR 中说明。
+
+### 8.3 PR：尽早暴露，保持可审查
+
+- 第一个可评审提交后直接创建正式 PR，不使用 Draft PR；禁止完成后才一次性推送全部工作。
+- PR 标题必须是英文，并遵循 Conventional Commits；PR 正文可使用中文。
+- PR 必须关联 Issue，使用 `Closes #<issue>`；PR 范围必须与 Issue 一致。
+- PR 的 diff 原则上 ≤ 400 行（lockfile、生成代码和机械迁移不计）。超限时拆 PR，
+  不以“同属一个功能”为理由提交大 diff。
+- PR 描述至少包含：
+  - 做了什么、为什么；
+  - 安全边界与依赖方向是否变化；
+  - 验证命令、平台、实际结果与未覆盖项；
+  - 新依赖五问（无依赖时删除）；
+  - 兼容性、回滚方式与已知限制。
+- 触及安全机制、凭证、网络策略或审计时，标题使用 `security:` 前缀，并提供攻击验证子集。
+- 依赖升级使用 `deps:` 前缀；nono 升级必须独立 PR，附上游 release notes 与回归证据。
+- 禁止在 PR 描述、评论、截图、日志或测试输出中出现真实凭证和内部赛题材料。
+
+### 8.4 CI 与 Review：未验证不算完成
+
+- 合并前必须通过仓库现有质量门禁：
+
+  ```text
+  fmt / clippy / test / cargo-deny / secret scan
+  ```
+
+  CI 接入前，PR 中必须粘贴本地命令、平台、结果和未覆盖项；CI 接入后以绿勾为准，
+  不能用手工结果替代必需检查。
+- 至少获得 1 名人类 Approve；作者不能作为自己 PR 的唯一 Review。
+- 横切线 Review 必须到位：nono/上游跟版 → A，安全条款 → B，架构与依赖方向 → C。
+- Review 优先检查：依赖方向与分层 → 安全边界 → 错误与边界 → 测试充分性 → 命名与风格。
+- Review 意见标记为 `blocking`、`question`、`nit`、`fyi`；只有 `blocking` 阻塞合并。
+  所有 `blocking` 必须解决，所有 Review conversation 必须 resolved。
+- 新增/修改行为必须附带测试；安全路径必须包含拒绝场景和审计证据，不能只测成功路径。
+
+### 8.5 Merge：只走 Squash，合并后仍需验证
+
+合并必须同时满足：
+
+- 关联 Issue 的验收标准全部满足；
+- PR 与本 Issue 范围一致，无未说明的顺手修改；
+- CI 必需检查全绿，Review conversation 全部 resolved；
+- ≥ 1 名人类 Approve，必要的横切线负责人已 Review；
+- 分支已同步最新 `main`，且没有冲突。
+
+合并规则：
+
+1. 只使用 **Squash Merge**，保持 `main` 线性历史。
+2. 合并后删除短生命周期分支。
+3. `main` 合并后再从干净工作区执行最小 smoke/E2E；不要把本地测试通过当成远程 CI 结果。
+4. 在 Issue/PR 中补充合并后验证结果；未验证项明确列出，不能口头声称完成。
+5. 行为变化同步更新 spec、crate README、profile README、CHANGELOG 或 TODO。
+
+### 8.6 Tag 与 Release
+
+- `v0` 是不可移动的导入基线 Tag，禁止删除、重打或 force-push。
+- `P0` / `P1` / `P2` 只作为 Label，不能作为 Tag、分支名或代码标识。
+- 正式发布使用 `vMAJOR.MINOR.PATCH`，Tag 必须指向经过验证的 `main` Commit。
+- Release 必须绑定源 Commit、构建产物和验证证据；Tag 创建后不可移动。
+
+### 8.7 紧急修复
+
+- 紧急修复也必须先有 Issue 和 PR，并在 PR 中说明受影响范围、恢复目标和回滚方式。
+- 紧急路径只能压缩等待时间，不能跳过测试、安全检查和合并后验证。
+- 合并后 24 小时内补齐复盘与后续改进 Issue。
 
 ---
 
