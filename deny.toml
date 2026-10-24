@@ -21,6 +21,10 @@ allow = [
     "ISC",
     "Unicode-3.0",
     "Zlib",
+    # webpki-roots (via ureq -> rustls in qn-nono installer) bundles the
+    # Mozilla root certificate store as data under CDLA-Permissive-2.0.
+    # Data-only, redistribution-permissive; see qn-nono installer PR (issue #29).
+    "CDLA-Permissive-2.0",
 ]
 confidence-threshold = 0.8
 
