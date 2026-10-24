@@ -7,6 +7,7 @@
 #![cfg(target_os = "windows")]
 
 pub mod decode;
+pub mod distro;
 pub mod health;
 pub mod kernel;
 

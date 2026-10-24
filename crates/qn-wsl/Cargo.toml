@@ -9,10 +9,15 @@ description = "Windows WSL2 provisioning adapter for qn-sandbox (health probes f
 [dependencies]
 qn-config = { path = "../qn-config", version = "0.1.0" }
 qn-infra = { path = "../qn-infra", version = "0.1.0" }
+thiserror = "2"
 
 [dev-dependencies]
 # 库本体 runtime 无关（async fn 不绑定运行时）；example 与集成测试需要执行器。
 tokio = { version = "1", features = ["rt", "macros", "rt-multi-thread"] }
+
+[features]
+# 真实供给集成测试（本机 opt-in，配合 QN_WSL_PROVISION_IT=1；CI 不启用）。
+provision-it = []
 
 [lints]
 workspace = true
