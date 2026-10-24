@@ -113,3 +113,17 @@ root 布局与 #46 探测一致（home/config/state/cache/tmp），须为受管�
 
 真实只读 smoke：`QN_TEST_NONO=/verified/nono QN_TEST_ROOT=/isolated/probe-root cargo test --locked -p qn-nono --test audit_reader -- --native`
 （只使用含合成审计记录的隔离根；默认不带 `--native` 时跑 Rust 子进程回归）。
+
+## 启动前身份预留（#108）
+
+LaunchBinding 在可信私有控制根中通过 create_new 原子预留 qn ID，使用 OS 随机数生成完整
+native ID。预留文件在释放句柄、启动失败后仍保留；不得删除后重试同一 ID。不同控制根是
+不同命名空间，装配层必须统一选择；目录项的崩溃持久化与保留清理由拥有者负责。
+command 只允许相同 qn ID 的前台启动，清空父环境并设置 nono 0.80.0 私有启动身份变量；
+调用方负责二进制完整性/版本、profile 校验、可信环境和唯一进程句柄。该变量由上游过滤，
+不进入沙箱环境；此行为来自 launch_runtime / proxy_runtime / exec_strategy 并须原生回归。
+verify 拒绝观察到的 qn/native 漂移；ID 不是认证、存活证明或后代清理证明（#93）。
+
+bound_launch_probe 示例由宿主测试器在启动前接收关联，再通过有界 stdin 提交合成 child argv；
+仅供测试协调，不是生产 runner。实际 runner/capture 组合在 #92/#107 的本地集成验证，
+依赖的 PR 未合并。默认回归：cargo test --locked -p qn-nono --lib launch::tests。
