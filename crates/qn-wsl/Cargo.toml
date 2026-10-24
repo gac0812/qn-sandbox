@@ -4,6 +4,16 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+description = "Windows WSL2 provisioning adapter for qn-sandbox (health probes first)"
+
+[dependencies]
+qn-config = { path = "../qn-config" }
+qn-infra = { path = "../qn-infra" }
+thiserror = "2"
+tokio = { version = "1", features = ["rt", "macros"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread"] }
 
 [lints]
 workspace = true
