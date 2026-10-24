@@ -36,7 +36,8 @@
 - 参数构造不校验 profile 内容或来源；runner 在执行前仍须验证 profile 的默认拒绝、环境白名单、
   凭证约束与来源，并完成 #27 环境清理。此片未实现 runner 或冻结 #14 ports。
 - `verify_version(&Utf8Path)` 是异步只读探测，全部经 `qn-infra::process`；
-  不搜索 PATH，不拉起沙箱。相对路径、非零退出、截断/异常输出、版本不符均拒绝。
+  不搜索 PATH，不拉起沙箱；通过 `env_clear()` 启动空环境子进程，避免继承宿主凭证（#56）。
+  相对路径、非零退出、截断/异常输出、版本不符均拒绝。
   缺失二进制和超时保留原始进程错误；版本响应不会进入本 crate 的错误信息。
 - 安装调用方可在 `install` 返回后显式调用 `verify_version`；尚未接入 CLI/doctor，
   `install` 本身保持同步下载安装语义。版本字符串检查不能证明文件完整性。
@@ -54,6 +55,8 @@ QN_TEST_NONO=/absolute/path/to/nono cargo test --locked -p qn-nono --test versio
 ```
 
 此测试只验证版本调用契约，不等同于沙箱隔离、凭证或 Agent E2E 验收。
+`cargo test --locked -p qn-nono --test version_environment` 使用合成 canary 和自重执行的
+Rust 测试程序验证实际探测路径不继承环境；不修改宿主环境，也不代表 #27 的 sandbox run 已接入。
 
 ## macOS 协议实测
 

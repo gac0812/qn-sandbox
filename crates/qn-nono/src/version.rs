@@ -15,6 +15,7 @@ const PROBE_OUTPUT_LIMIT: usize = 1024;
 /// The caller supplies an absolute path: this never searches PATH or installs a
 /// binary. This read-only probe neither launches a sandbox nor verifies file
 /// integrity; successful version output is not a substitute for SHA-256 checks.
+/// The version-only child receives an empty environment, never host credentials.
 ///
 /// # Errors
 ///
@@ -35,6 +36,7 @@ pub async fn verify_version(binary: &Utf8Path) -> Result<(), NonoError> {
         return Err(NonoError::RelativeExecutable);
     }
     let command = CmdSpec::new(binary.as_str())
+        .env_clear()
         .arg("--version")
         .timeout(PROBE_TIMEOUT)
         .max_output_bytes(PROBE_OUTPUT_LIMIT)
