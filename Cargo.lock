@@ -543,12 +543,15 @@ version = "0.1.0"
 name = "qn-nono"
 version = "0.1.0"
 dependencies = [
+ "camino",
  "flate2",
  "hex",
  "qn-config",
+ "qn-infra",
  "sha2",
  "tar",
  "thiserror",
+ "tokio",
  "ureq",
 ]
 
