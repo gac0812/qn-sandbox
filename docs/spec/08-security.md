@@ -47,6 +47,23 @@
 - 授权模型：grant 记录（会话 × 引用 × 作用域），revoke 立即断供；审计只记引用名与时间，**不记值**。
 - 攻击演示（读密钥/越权出站/env 探测/revoke 断供）是安全回归，见 05 §1/§2。
 
+### 4.1 M1 执行要求（#47，2026-10-24 已接受）
+
+- 生产启动必须调用共享 process 层的 `env_clear`，然后仅加入经 profile 批准的环境项；
+  只提供 env 黑名单或仅清理版本探测不构成 sandbox run 的验收。
+- 受管 profile 的 HOME/config/state/cache 与用户配置隔离；禁止从未受控的 user default、pack hooks
+  或外部 profile 间接扩大权限。真实凭证、宿主 provider 和控制面状态不在沙箱 fs 白名单内。
+- capture 入口只接收 grant 句柄和引用，逐请求验证会话/作用域/到期/撤销状态；设置上游缓存 TTL=0。
+  provider 明文响应只在宿主内交给 nono 代理，禁止进入普通进程 stdout/stderr 日志、Debug 或错误摘要。
+- 托管配置采用封闭结构，只包含批准的句柄和代理端点；未知字段、任意 env/header、非受管目标和
+  原始凭证在写入前拒绝。写入失败不能留下可被使用的半份配置。
+- revoke 完成后发起的请求必须断供；已经在途的请求须明确记录处理/取消结果，不能声称追溯撤销。
+- 审计保留证据来源与完整性。child stderr 可伪造，`why` 是策略查询；二者不等于已认证的历史拒绝日志。
+  停止退出码、列表消失及普通测试全绿均不能代替真实进程清理和攻击 E2E 证据。
+
+此处接受实现方向，未宣称生产路径已经实现；真实 provider、官方 profiles、macOS/WSL 攻击与撤销
+验收仍按 05 执行。授权与技术依据见 [#47](https://github.com/gac0812/qn-sandbox/issues/47)。
+
 ## 5. 控制面安全
 
 - qnd 只监听本机；启动时生成本地 token（`~/.qn/token`，0600），CLI/UI/SDK 自动携带。
