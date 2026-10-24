@@ -13,6 +13,13 @@ tar = "0.4"
 thiserror = "2"
 ureq = "2.12"
 qn-config = { path = "../qn-config", version = "0.1.0" }
+qn-core = { path = "../qn-core", version = "0.1.0" }
+qn-infra = { path = "../qn-infra", version = "0.1.0" }
+camino = "1"
+
+[dev-dependencies]
+serde_json = "1"
+tokio = { version = "1", features = ["rt", "macros"] }
 
 [lints]
 workspace = true
