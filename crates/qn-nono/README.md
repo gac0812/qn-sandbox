@@ -113,3 +113,20 @@ root 布局与 #46 探测一致（home/config/state/cache/tmp），须为受管�
 
 真实只读 smoke：`QN_TEST_NONO=/verified/nono QN_TEST_ROOT=/isolated/probe-root cargo test --locked -p qn-nono --test audit_reader -- --native`
 （只使用含合成审计记录的隔离根；默认不带 `--native` 时跑 Rust 子进程回归）。
+
+## 原生会话关联（#89）
+
+`session::SessionReader::find(qn_id)` 在私有 runtime root 中精确匹配名称，再以完整 native ID
+执行 inspect 并重验两种身份。重复名称/ID、错误格式、身份变化或不一致状态均拒绝。
+返回不可变 `NativeSession`；`Running/Paused/Exited` 与 nullable exit code 只是原生观察，
+不推断 core Stopped、后代清理或会话所有权。名称不是认证，调用方须拥有启动句柄、确保
+root 对沙箱不可见且每次启动唯一；`None` 也不证明进程退出。native ID 可传同根 AuditReader。
+复用 audit 的空父环境、隔离 HOME/XDG、锁版检查、5 秒单次命令时限及 1 MiB 输出上限。
+尚未接入生产 runner/core port；不会因读到记录而自行停止进程或扩大授权。
+
+默认回归：`cargo test --locked -p qn-nono --lib session::tests` 和 `--test audit_reader`。
+真实 smoke：在专用合成 HOME/XDG 下用锁版 nono 前台启动带 qn SessionId 名称的短时会话，
+会话运行期间设置 `QN_TEST_NONO`、`QN_TEST_ROOT`、`QN_TEST_SESSION` 后执行：
+`cargo test --locked -p qn-nono --test audit_reader -- --native-session`。
+测试不负责启动/清理；只允许专用临时根，不得指向用户状态。2026-10-25 macOS 实测
+8 秒前台 sleep：一个 Running 记录、find/inspect 成功、前台自然退出 0；不代表 Agent E2E。
