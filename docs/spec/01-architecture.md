@@ -26,7 +26,7 @@
 │  qn-nono    │ │  qn-broker  │ │  qn-gateway   │ │   qn-wsl     │  ← 适配层
 │ 引擎适配器  │ │ 凭证代答    │ │ MCP mediation │ │ Win 供给链路  │
 └───────┬─────┘ └──────┬──────┘ └───────┬───────┘ └────┬─────────┘
-        │ 子进程/FFI    │ phantom 代理    │              │ wsl.exe
+        │ 子进程(CLI)   │ phantom 代理    │              │ wsl.exe
 ┌───────▼──────────────▼────────────────▼──────────────▼─────────┐
 │  nono（外部单二进制，锁版本）      OS 凭证库      WSL2 发行版     │
 │  Landlock(Linux)/Seatbelt(macOS) · phantom tokens · 审计日志    │

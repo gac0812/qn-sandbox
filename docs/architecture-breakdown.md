@@ -48,7 +48,7 @@ flowchart LR
 | `qn`（CLI） | 独立二进制 | 人机入口：run/status/audit/doctor、profile 管理 | 业务规则 | 连 qnd；`--direct` 进程内直用 core |
 | `qnd`（控制面后端 daemon） | 常驻进程 | 装配适配器、状态与审计查询、M3 起 HTTP API | 业务规则（在 core）、直连 nono 细节 | 127.0.0.1 + token；被 CLI/Tauri/SDK/MCP 使用 |
 | `qn-ui`（Tauri 壳） | 桌面应用 | profiles / 权限 / 状态 / 审计四视图 | 任何后端逻辑 | 只走 qnd |
-| **nono**（外部单二进制） | 第三方引擎 | 进程沙箱（Seatbelt/Landlock）、phantom token 凭证代理、L7 网络规则、防篡改审计 | ——（我们不改其源码，锁版本） | 被 qn-nono 以子进程/FFI 驱动；代理承接沙箱出站 |
+| **nono**（外部单二进制） | 第三方引擎 | 进程沙箱（Seatbelt/Landlock）、phantom token 凭证代理、L7 网络规则、防篡改审计 | ——（我们不改其源码，锁版本） | 被 qn-nono 以子进程（锁版 CLI）驱动；代理承接沙箱出站 |
 | WSL2 发行版（仅 Windows） | 受管 Linux 环境 | 承载 nono 与 Agent CLI 运行 | —— | qn-wsl 经 `wsl.exe` 供给与管理 |
 | OS 凭证库 | 外部存储 | 真实凭证宿主侧存放（跟随 nono 机制）；qn 自身 token | —— | keyring 仅 qn-daemon |
 | 本地状态 | `~/.qn/` | 配置、会话注册、审计缓存、日志 | 凭证明文 | 文件锁串行 |
@@ -80,7 +80,7 @@ flowchart LR
 ### 3.2 `qn-nono` — 引擎适配器（A 负责人）
 - **职责**：nono 安装与版本锁、`run --profile` 拉起、status/`why` 透传、审计日志采集；实现 `SandboxEngine`。
 - **边界**：全仓唯一触碰 nono 的 crate；不自研任何隔离机制。
-- **内部模块**：`installer`（下载/校验/锁版）、`runner`（子进程或 FFI——M0 spike 定）、`profile_gen`（core Profile → nono profile JSON）、`audit_tail`（审计流采集与 Denial 结构化）、`why`（拒绝原因透传）。
+- **内部模块**：`installer`（下载/校验/锁版）、`runner`（经 `qn-infra::process` 子进程调用 nono CLI，解析 `--json` 输出；依据 [spike ③](./dev-notes/spike-03-nono-integration.md)）、`profile_gen`（core Profile → nono profile JSON）、`audit_tail`（审计流采集与 Denial 结构化）、`why`（拒绝原因透传）。
 - **测试**：对 nono 的契约测试（真二进制，CI 缓存）；profile 生成快照测试。
 
 ### 3.3 `qn-broker` — 凭证代答（A 负责人）
@@ -159,7 +159,7 @@ flowchart LR
 
 | 通道 | 机制 | 备注 |
 | --- | --- | --- |
-| qnd ↔ nono | 子进程或 FFI（M0 spike 定）；审计经文件/流采集 | 唯一经 qn-nono |
+| qnd ↔ nono | 子进程调用锁版 nono CLI（Windows 经 `wsl.exe` 前缀）；审计经文件/流采集 | 唯一经 qn-nono |
 | 沙箱出站 ↔ 外部 | nono 凭证代理（allowlist + phantom token 附加认证） | 越权即拒 + Denial |
 | qnd ↔ WSL2 | `wsl.exe` 命令 + localhost 代理 | 仅 Windows |
 | 控制面对外（M3） | ConnectRPC（契约同源生成 SDK/qn-mcp） | 单一契约源 |
