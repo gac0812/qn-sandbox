@@ -10,10 +10,6 @@ pub mod decode;
 pub mod health;
 pub mod kernel;
 
-mod error;
-
-pub use error::Error;
-
 /// 受管发行版名。命名与生命周期归 distro 模块（后续 issue，#74 关联），
-/// health 只按此名探测存在性与状态。
+/// health 只按此名探测存在性。
 pub const MANAGED_DISTRO_NAME: &str = "qn-sandbox";

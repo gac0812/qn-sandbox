@@ -149,6 +149,12 @@ pub struct CmdOutcome {
     pub stdout: String,
     /// stderr（有界，UTF-8 lossy）。
     pub stderr: String,
+    /// stdout 原始字节（与 `stdout` 同源）。需要精确字节的调用方使用——
+    /// 例如非 UTF-8 输出（`wsl.exe` 的 UTF-16 UI 输出）不能经 lossy 字符串往返，
+    /// 否则解码前的字节已被替换破坏（`qn-wsl::decode` 的实测教训）。
+    pub stdout_raw: Vec<u8>,
+    /// stderr 原始字节（与 `stderr` 同源），语义同 [`CmdOutcome::stdout_raw`]。
+    pub stderr_raw: Vec<u8>,
     /// stdout 是否不完整：超出捕获上限被截断，或读取中途失败。
     pub stdout_truncated: bool,
     /// stderr 是否不完整：超出捕获上限被截断，或读取中途失败。
@@ -304,6 +310,8 @@ async fn run_inner(spec: &CmdSpec, cancel: Option<CancellationToken>) -> Result<
         success: status.success(),
         stdout: String::from_utf8_lossy(&stdout).into_owned(),
         stderr: String::from_utf8_lossy(&stderr).into_owned(),
+        stdout_raw: stdout,
+        stderr_raw: stderr,
         stdout_truncated,
         stderr_truncated,
         duration,

@@ -78,10 +78,13 @@ impl KernelVersion {
     }
 
     /// Landlock ABI floor：该内核修订线保证的最低 ABI 版本（0 = 不支持）。
+    /// 依据：https://docs.kernel.org/userspace-api/landlock.html 的 ABI 版本表
+    /// （v1=5.13 … v4=6.7 引入网络 access rights），6.18→7 由 spike① 探针实测校准；
+    /// 主版本 ≥7 按已知最高 floor 取值（未来内核只增不减）。
     #[must_use]
     pub fn landlock_abi_floor(&self) -> u32 {
         match (self.major, self.minor) {
-            (m, _) if m < 5 => 0,
+            (m, _) if m >= 7 => 7,
             (5, minor) if minor >= 19 => 2,
             (5, 13..=18) => 1,
             (6, minor) if minor >= 18 => 7,
@@ -89,6 +92,7 @@ impl KernelVersion {
             (6, 10..=11) => 5,
             (6, 7..=9) => 4,
             (6, 2..=6) => 3,
+            (6, 0..=1) => 2,
             _ => 0,
         }
     }
