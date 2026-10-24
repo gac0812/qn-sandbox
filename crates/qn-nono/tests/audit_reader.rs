@@ -35,7 +35,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
         Some("audit") => fake_query()?,
         Some("--parent") => verify(binary).await?,
-        _ if std::env::var_os("QN_TEST_NONO").is_some() => {
+        Some("--native") => {
             let reader = AuditReader::new(
                 std::env::var("QN_TEST_NONO")?.into(),
                 std::env::var("QN_TEST_ROOT")?.into(),

@@ -109,5 +109,5 @@ root 布局与 #46 探测一致（home/config/state/cache/tmp），须为受管�
 默认 Debug/错误不回显载荷。DTO 仅呈现原生记录，不证明来源完整/可信，不推断 filesystem Denial，
 也不表示 #66 的统一事件查询或攻击 U8 已验收。schema 样本见 `tests/fixtures/nono-0.80.0/audit-*.json`。
 
-真实只读 smoke：`QN_TEST_NONO=/verified/nono QN_TEST_ROOT=/isolated/probe-root cargo test --locked -p qn-nono --test audit_reader`
-（只使用含合成审计记录的隔离根；默认不设置这两个变量时跑 Rust 子进程回归）。
+真实只读 smoke：`QN_TEST_NONO=/verified/nono QN_TEST_ROOT=/isolated/probe-root cargo test --locked -p qn-nono --test audit_reader -- --native`
+（只使用含合成审计记录的隔离根；默认不带 `--native` 时跑 Rust 子进程回归）。
