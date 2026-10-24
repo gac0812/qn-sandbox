@@ -7,9 +7,10 @@ use serde_json::Value;
 
 // All payload-bearing Debug implementations intentionally hide fields.
 macro_rules! record {
-    ($name:ident { $($(#[$attr:meta])* $field:ident: $ty:ty),* $(,)? }) => {
-        #[derive(Deserialize)]
-        pub(crate) struct $name { $($(#[$attr])* pub $field: $ty),* }
+    ($(#[$meta:meta])* $visibility:vis $name:ident { $($(#[$attr:meta])* $field:ident: $ty:ty),* $(,)? }) => {
+        $(#[$meta])*
+        #[derive(Deserialize, serde::Serialize)]
+        $visibility struct $name { $($(#[$attr])* pub $field: $ty),* }
         impl std::fmt::Debug for $name {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 f.debug_struct(stringify!($name)).finish_non_exhaustive()
@@ -23,49 +24,86 @@ fn nullable<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(
 ) -> Result<Option<T>, D::Error> {
     Option::deserialize(d)
 }
-record!(ProfileValidation { file: String, valid: bool, errors: Vec<String>, warnings: Vec<String>, deprecated_keys: u64 });
-#[derive(Debug, Deserialize, PartialEq)]
+record!(pub(crate) ProfileValidation { file: String, valid: bool, errors: Vec<String>, warnings: Vec<String>, deprecated_keys: u64 });
+#[derive(Debug, Deserialize, serde::Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum Status {
     Running,
     Paused,
     Exited,
 }
-record!(SessionRecord {
+record!(pub(crate) SessionRecord {
     session_id: String,
     #[serde(deserialize_with = "nullable")] name: Option<String>,
     status: Status,
     #[serde(deserialize_with = "nullable")] exit_code: Option<i32>,
 });
-record!(AuditSummary {
-    session_id: String, is_alive: bool, is_stale: bool, network_event_count: u64,
+record!(
+    /// Native audit-list metadata, not a core session state or completeness proof.
+    pub AuditSummary {
+    /// Full native record identifier.
+    session_id: String,
+    /// Native start wall time when emitted; no synthetic timestamp is supplied.
+    started: Option<String>,
+    /// Native end wall time when emitted.
+    ended: Option<String>,
+    /// Native liveness observation.
+    is_alive: bool,
+    /// Native stale-record observation.
+    is_stale: bool,
+    /// Number of network events reported by nono.
+    network_event_count: u64,
+    /// Observed exit code, explicitly nullable.
     #[serde(deserialize_with = "nullable")] exit_code: Option<i32>,
 });
-record!(NetworkEvent {
+record!(
+    /// Native network event; fields are observations, not inferred denials.
+    pub NetworkEvent {
+    /// Proxy mode reported by nono.
     mode: String,
+    /// Native event wall time in milliseconds, when emitted.
+    timestamp_unix_ms: Option<u64>,
+    /// Native allow/deny decision text.
     decision: String,
-    target: String
+    /// Native denial category for presentation, when emitted.
+    denial_category: Option<String>,
+    /// Reported network target; explicit access is for audit presentation.
+    target: String,
+    /// Native destination port when emitted.
+    port: Option<u16>,
 });
-record!(AuditRecord {
-    session_id: String, network_events: Vec<NetworkEvent>, audit_event_count: u64,
+record!(
+    /// Native audit-show result; it does not assert complete filesystem coverage.
+    pub AuditRecord {
+    /// Full native record identifier.
+    session_id: String,
+    /// Native start wall time when emitted.
+    started: Option<String>,
+    /// Native end wall time when emitted.
+    ended: Option<String>,
+    /// Network events actually present in the native record.
+    network_events: Vec<NetworkEvent>,
+    /// Number of native audit events reported by nono.
+    audit_event_count: u64,
+    /// Observed exit code, explicitly nullable.
     #[serde(deserialize_with = "nullable")] exit_code: Option<i32>,
 });
-record!(Denial {
+record!(pub(crate) Denial {
     path: String,
     access: String,
     reason: String
 });
-record!(Violation {
+record!(pub(crate) Violation {
     operation: String,
     target: String
 });
-record!(Diagnostic {
+record!(pub(crate) Diagnostic {
     code: String,
     severity: String,
     message: String
 });
-record!(SessionDiagnostics { exit_code: i32, denials: Vec<Denial>, violations: Vec<Violation>, diagnostics: Vec<Diagnostic> });
-record!(Diagnostics {
+record!(pub(crate) SessionDiagnostics { exit_code: i32, denials: Vec<Denial>, violations: Vec<Violation>, diagnostics: Vec<Diagnostic> });
+record!(pub(crate) Diagnostics {
     session: SessionDiagnostics
 });
 

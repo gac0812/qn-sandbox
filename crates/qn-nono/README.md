@@ -11,6 +11,7 @@
 | `installer` | 锁版 manifest（v0.80.0 + 各平台 SHA-256）、下载、校验、解包安装到 `<install_root>/<version>/nono` | M0 骨架（本期） |
 | `args` | version / profile validate / run 的受限参数构造；固定诊断开关和命令分隔符 | A-0.5（#43） |
 | `args::session` | 本地 ps/inspect/stop/audit list/show 参数；完整 native ID 与固定选项边界 | A-0.5（#52） |
+| `audit::AuditReader` | 隔离 HOME/XDG、锁版探测、受管执行的 typed audit list/show | #68（原生记录，不等于完整 AuditEvent） |
 | `version` | 显式绝对路径调用 `nono --version`，锁版比对、5 秒超时、单流 1 KiB 输出上限 | A-0.5 首片（#41） |
 | `runner` | 经 `qn-infra::process`（#19）调用 nono CLI + 契约测试 | M1（未开始） |
 | `profile_gen` | core Profile → nono profile JSON | M1（未开始） |
@@ -100,4 +101,13 @@ wire 模块按 #46 的 nono 0.80.0 实测 fixture 解析 profile、ps/inspect、
 字段未知可兼容；必需字段缺失/错型、截断、超限、歧义拒绝。错误和 Debug 不回显载荷。
 解析不判断退出成功、不推断 Denial、不将 wire 状态映射到 core；未来 runner 仍须处理进程结果。
 诊断只保证结构，不保证来源：child stderr 可伪造 JSON，#47 确认审计可信来源前不能把它当授权依据。
-模块暂时 crate-private、无生产调用；限定 dead_code 豁免待 #14 首个 consumer 接入后移除。
+审计 DTO 经 `audit` 模块公开，其他 wire 类型仍 crate-private；未接入的 engine 路径保留 #14 dead_code 豁免。
+
+`AuditReader::new(binary, managed_root, policy)` 只接受绝对路径，调用方须先核对 binary 的安装完整性。
+root 布局与 #46 探测一致（home/config/state/cache/tmp），须为受管目录；策略由 bootstrap 注入。
+`list/show` 使用固定参数、空父环境、5 秒查询限时和单流 1 MiB 上限；show 核对完整 native ID。
+默认 Debug/错误不回显载荷。DTO 仅呈现原生记录，不证明来源完整/可信，不推断 filesystem Denial，
+也不表示 #66 的统一事件查询或攻击 U8 已验收。schema 样本见 `tests/fixtures/nono-0.80.0/audit-*.json`。
+
+真实只读 smoke：`QN_TEST_NONO=/verified/nono QN_TEST_ROOT=/isolated/probe-root cargo test --locked -p qn-nono --test audit_reader`
+（只使用含合成审计记录的隔离根；默认不设置这两个变量时跑 Rust 子进程回归）。
