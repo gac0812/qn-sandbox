@@ -5,5 +5,21 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 
+[dependencies]
+qn-infra = { path = "../qn-infra", version = "0.1.0" }
+camino = "1"
+thiserror = "2"
+tokio-util = "0.7"
+zeroize = "1.9.1"
+
+[dev-dependencies]
+qn-bootstrap = { path = "../qn-bootstrap", version = "0.1.0" }
+tokio = { version = "1", features = ["rt", "macros", "net", "io-util", "time"] }
+tracing = "0.1"
+
+[[test]]
+name = "host_provider"
+harness = false
+
 [lints]
 workspace = true

@@ -598,6 +598,16 @@ dependencies = [
 [[package]]
 name = "qn-broker"
 version = "0.1.0"
+dependencies = [
+ "camino",
+ "qn-bootstrap",
+ "qn-infra",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "zeroize",
+]
 
 [[package]]
 name = "qn-cli"
