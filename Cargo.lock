@@ -619,6 +619,7 @@ dependencies = [
 name = "qn-core"
 version = "0.1.0"
 dependencies = [
+ "camino",
  "thiserror",
  "uuid",
 ]
