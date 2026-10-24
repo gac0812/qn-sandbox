@@ -1,4 +1,4 @@
-//! Harness-free fixture so verify_version can invoke this executable with --version.
+//! Harness-free fixture so `verify_version` can invoke this executable with `--version`.
 //! A separate parent carries a synthetic canary; no host environment is mutated.
 use std::{error::Error, time::Duration};
 
