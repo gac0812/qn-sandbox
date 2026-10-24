@@ -8,6 +8,16 @@ use std::io;
 /// Failures while installing, probing, or parsing the locked `nono` release.
 #[derive(Debug, thiserror::Error)]
 pub enum NonoError {
+    /// A native session identifier is not a full pinned-format ID.
+    #[error(
+        "invalid nono session ID; use a full 16-character lowercase hex ID from local session records"
+    )]
+    InvalidNonoSessionId,
+
+    /// A graceful stop cannot be represented as a bounded whole-second wait.
+    #[error("invalid nono stop timeout; use 1 to 300 whole seconds")]
+    InvalidStopTimeout,
+
     /// Bounded output could not satisfy the pinned protocol contract.
     #[error("invalid nono {operation} response: {reason}; check the pinned binary")]
     Protocol {
