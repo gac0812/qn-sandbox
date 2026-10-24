@@ -127,3 +127,10 @@ QN_TEST_NONO=/verified/nono QN_TEST_PROFILE_PARENT=/private/probe-parent cargo t
 合成后代一个 loopback 端口用于就绪/关闭证据。正常退出、取消、超时均检查；清理失败时仅通过
 已建立连接让测试后代退出（另有 12 秒自退出期限），不补杀未经身份保护的 PID。
 此结果不证明任意脱离进程组后代、detached supervisor、Windows/WSL 或完整 Agent E2E 的清理。
+
+2026-10-25 集成 #92 进一步发现：即使后代未主动脱组，只要关闭继承的 stdio 并让父进程退出，
+受管 wait 也可能返回 Exited(0)，后代仍可执行。新增
+`it_demonstrates_parent_exit_is_not_descendant_cleanup` 在父进程成功退出后才向已建立的
+合成后代连接发送探针，确认应答后关闭；通过表示复现此限制，**不是清理通过**。
+因此生产 runner 不得把 ManagedOutput/原生 Exited 直接映射为 core Stopped；需先解决 #92 的
+后代所有权/终止证明。测试不给沙箱额外文件权限、不按数字 PID 补杀；无真实凭证或外部网络。
