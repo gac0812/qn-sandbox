@@ -561,6 +561,7 @@ dependencies = [
  "qn-config",
  "qn-core",
  "qn-infra",
+ "serde",
  "serde_json",
  "sha2",
  "tar",

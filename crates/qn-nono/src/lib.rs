@@ -37,3 +37,7 @@ pub use installer::{InstallOptions, InstalledBinary, install};
 pub use manifest::LOCKED_NONO_VERSION;
 pub use target::NonoTarget;
 pub use version::verify_version;
+
+// TODO(#14): remove this allowance when the first engine port consumes wire data.
+#[allow(dead_code)]
+mod wire;
