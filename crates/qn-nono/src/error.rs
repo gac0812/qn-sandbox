@@ -8,6 +8,15 @@ use std::io;
 /// Failures while installing or probing the locked `nono` release.
 #[derive(Debug, thiserror::Error)]
 pub enum NonoError {
+    /// An invocation argument is invalid; its value is never echoed.
+    #[error(
+        "invalid nono {field}; use absolute UTF-8 paths and a nonempty command without NUL bytes"
+    )]
+    InvalidArgument {
+        /// Static field name identifying the invalid input.
+        field: &'static str,
+    },
+
     /// A relative executable path could resolve through the user's PATH.
     #[error("nono executable path must be absolute; use the managed installation path")]
     RelativeExecutable,

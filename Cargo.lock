@@ -547,6 +547,7 @@ dependencies = [
  "flate2",
  "hex",
  "qn-config",
+ "qn-core",
  "qn-infra",
  "sha2",
  "tar",

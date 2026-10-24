@@ -13,6 +13,7 @@ tar = "0.4"
 thiserror = "2"
 ureq = "2.12"
 qn-config = { path = "../qn-config", version = "0.1.0" }
+qn-core = { path = "../qn-core", version = "0.1.0" }
 qn-infra = { path = "../qn-infra", version = "0.1.0" }
 camino = "1"
 
