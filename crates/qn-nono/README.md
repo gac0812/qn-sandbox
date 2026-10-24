@@ -113,3 +113,17 @@ root 布局与 #46 探测一致（home/config/state/cache/tmp），须为受管�
 
 真实只读 smoke：`QN_TEST_NONO=/verified/nono QN_TEST_ROOT=/isolated/probe-root cargo test --locked -p qn-nono --test audit_reader -- --native`
 （只使用含合成审计记录的隔离根；默认不带 `--native` 时跑 Rust 子进程回归）。
+
+## 受管前台生命周期契约（#81）
+
+macOS/Linux 安装 `/usr/bin/ruby`，先核对 nono 归档与安装器 manifest 的 SHA-256，
+再确认二进制与归档一致。在 `/Users/Shared`（macOS）或专用测试根（Linux）创建私有空目录，运行：
+
+```sh
+QN_TEST_NONO=/verified/nono QN_TEST_PROFILE_PARENT=/private/probe-parent cargo test --locked -p qn-nono --test managed_contract -- --ignored
+```
+
+测试创建独立 HOME/XDG/project，严格校验策略，经 infra + process-wrap 前台运行；网络只给
+合成后代一个 loopback 端口用于就绪/关闭证据。正常退出、取消、超时均检查；清理失败时仅通过
+已建立连接让测试后代退出（另有 12 秒自退出期限），不补杀未经身份保护的 PID。
+此结果不证明任意脱离进程组后代、detached supervisor、Windows/WSL 或完整 Agent E2E 的清理。
