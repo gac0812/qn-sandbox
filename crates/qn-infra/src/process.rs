@@ -121,6 +121,12 @@ impl CmdSpec {
         self
     }
 
+    /// argv 的只读视图（含程序名之后的参数）。诊断、断言与调用方日志使用。
+    #[must_use]
+    pub fn arg_values(&self) -> &[String] {
+        &self.args
+    }
+
     fn effective_label(&self) -> &str {
         self.label.as_deref().unwrap_or(&self.program)
     }
