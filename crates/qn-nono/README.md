@@ -80,3 +80,11 @@ XDG_CACHE_HOME/TMPDIR` 分别指向这些子目录，`PATH=/usr/bin:/bin`、`LAN
 结束或失败后检查 `cleanup.json` 中的 PID 并清理仍存活的测试进程，不能只看 ps 的 exited。
 本轮复现 #47 的 force 残留，并观察到强杀后审计元数据缺失；审计详情契约仅在正常停止后断言。
 此测试只验证 CLI 契约，不代表 #14/#27/#47 或生产 Agent、安全撤销 E2E 已完成。
+
+## 内部协议解析（#48）
+
+wire 模块按 #46 的 nono 0.80.0 实测 fixture 解析 profile、ps/inspect、audit list/show 和混合 stderr 诊断。
+字段未知可兼容；必需字段缺失/错型、截断、超限、歧义拒绝。错误和 Debug 不回显载荷。
+解析不判断退出成功、不推断 Denial、不将 wire 状态映射到 core；未来 runner 仍须处理进程结果。
+诊断只保证结构，不保证来源：child stderr 可伪造 JSON，#47 确认审计可信来源前不能把它当授权依据。
+模块暂时 crate-private、无生产调用；限定 dead_code 豁免待 #14 首个 consumer 接入后移除。
