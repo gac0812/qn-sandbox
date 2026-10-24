@@ -8,6 +8,15 @@ use std::io;
 /// Failures while downloading, verifying, or unpacking the locked `nono` release.
 #[derive(Debug, thiserror::Error)]
 pub enum InstallerError {
+    /// An invocation argument is invalid; its value is never echoed.
+    #[error(
+        "invalid nono {field}; use absolute UTF-8 paths and a nonempty command without NUL bytes"
+    )]
+    InvalidArgument {
+        /// Static field name identifying the invalid input.
+        field: &'static str,
+    },
+
     /// The host platform (or explicit target) has no artifact in the locked
     /// manifest. Upstream ships no Windows build; WSL2 installs use the Linux
     /// artifact via `qn-wsl`.
