@@ -1,51 +1,75 @@
-# ADR-0005 — 沙箱引擎与 enforcement 层：`nono` 与平台 driver 的关系
+# ADR-0005 — 沙箱引擎：采用 nono（调研已完成，推荐选项 C，待三人确认）
 
-- 状态：Proposed（**资料待补**：`nono` 的上游链接、license、活跃度、平台矩阵由 #2 / guardrails 作者补充后再拍板）
+- 状态：Proposed（rev2：调研完成，含推荐结论；**待评审拍板**）
 - 日期：2026-10-24
-- 决策人：待三人评审
-- 关联：guardrails README「Target Architecture: Sandbox engine: `nono` as the security kernel」↔ ADR-0002（平台后端策略）
+- 决策人：AI 调研与提议，三人评审
+- 关联：guardrails README「Target Architecture」、ADR-0001（arcbox 基线）、ADR-0002（平台后端）、ADR-0004（凭证网关）
+- 调研来源：[nolabs-ai/nono](https://github.com/nolabs-ai/nono)（2026-10 查看）、[HF 官方博客](https://huggingface.co/blog/lukehinds/nono-agent-sandbox)（2026-02）
 
-## 背景
+## 1. nono 是什么（调研事实）
 
-guardrails（PR #2）把 `nono` 指定为"security kernel and enforcement boundary"（沙箱引擎）；
-本仓库 ADR-0002 已定的平台后端是 VZ / WSL2 / QEMU 三 driver（继承 arcbox）。
-两份架构叙述目前并存且未对齐——按 07 规范，架构冲突不得静默偏离，必须显式决策。
+**能力型安全 Shell**：用内核原语把进程锁进不可逆的沙箱——Landlock（Linux）/ Seatbelt（macOS），
+"限制一经施加，没有 API 可以绕过，nono 自己也不行"；子进程继承限制；敏感路径（`~/.ssh`、`~/.aws`）默认阻断。
 
-## 选项
+| 维度 | 事实 |
+| --- | --- |
+| 形态 | 单二进制，非特权运行；CLI + Rust/C FFI + Python 绑定 |
+| 平台 | macOS 原生（Seatbelt，10.5+，fs+network）；Linux（Landlock：fs 需内核 5.13+，**fs+network 需 6.7+**）；Windows 原生 ✗（可在 WSL2 内以 Linux 形态运行） |
+| 凭证 | **代理式注入**：API key 留在沙箱外，出站流量经代理附加认证；**phantom tokens**（短时占位符，限定只有获批的工具能用某凭证）——与 guardrails「scoped placeholders + upstream allowlists」措辞几乎逐字对应 |
+| 网络 | 域名过滤 + L7 规则（HTTP method/path） |
+| Profiles | 可组合 JSON 策略包（fs 范围/网络白名单/凭证/工具规则），支持 `--extends` 继承，有注册表 registry.nono.sh |
+| 审计 | 防篡改会话/决策日志（可选签名）；Sigstore 技能/指令 attestation；文件快照回滚 |
+| 活跃度 | 4.7k stars / 1.8k+ commits（2026-10），Sigstore 团队（Luke Hinds），pre-1.0（安全审计进行中） |
+| License | Apache-2.0 |
 
-### 选项 A：仅平台级隔离（维持 ADR-0002 原样）
-- 做法：隔离边界完全由 driver（VM/WSL2 容器）提供；profile 的 fs/网络最小权限由 qn-agent 内标准 Linux 机制（mount namespace / cgroup / seccomp / landlock）实现。
-- 优点：不引入新依赖；复用 arcbox 全部既有能力。
-- 缺点：enforcement 逻辑散在 qn-agent 各处；若无统一内核层，"default deny + per profile"审计粒度较粗。
+**与 guardrails P0 清单的对照**：Sandbox adapter≈包装 nono；Credential broker≈nono 的 phantom-token 代理；Profiles≈nono profiles；Audit≈nono 防篡改日志。guardrails 作者显然是按 nono 的实际能力写的目标架构。
 
-### 选项 B：driver 之上引入 in-guest enforcement kernel（`nono` 作为 guest 内策略内核）
-- 做法：driver 提供平台隔离基座（不变）；`nono` 运行在 guest 内作为策略执行内核（按 profile 收紧 fs/网络/进程），qn-agent 调用之。
-- 优点：两层防御（VM 边界 + guest 内最小权限）；与 guardrails "security kernel and enforcement boundary" 的定位吻合；若 nono 是成熟项目则复用大于自研。
-- 缺点：引入新架构级依赖（需过 04 §2 五问）；P0 工作量增加。
-- 风险与缓解：nono 资料不明 → 本 ADR 阻塞在此，先按 A 实现不阻塞 M1。
+## 2. 选项（rev2 修订）
 
-### 选项 C：`nono` 作为唯一跨平台引擎（替代 driver 层）
-- 做法：抛弃 VZ/WSL2/QEMU 三 driver，全部由 nono 承载。
-- 优点：单一引擎，行为最一致。
-- 缺点：若 nono 是 Linux-only 方案（大概率），macOS/Windows 宿主无从谈起——不可行性很高，列出仅为完备。
+### 选项 A：纯自研平台隔离（原 ADR-0002 形态）
+VM/WSL2 driver + qn-agent 内自研 enforcement（seccomp/landlock 手写）+ 自研凭证网关（演进 arcbox SOCKS5）。
+- 优点：完全自主；VM 级隔离最强。
+- 缺点：**重复造轮子规模巨大**——nono 已实现我们 P0 六项中的四项半；VM 路线开发周期远超黑客松窗口。
 
-## 对比
+### 选项 B：VM driver + nono 作 guest 内策略内核
+VZ/WSL2 提供虚拟化边界，nono 在 guest 内收紧权限（原 rev1 推荐方向）。
+- 优点：双层防御（独立内核 + 内核原语），隔离强度最高；arcbox 复用保留。
+- 缺点：VM 的全部代价（镜像、文件同步、启动慢、UX 割裂）；对 P0 而言过重。
 
-| 维度 | A 纯平台隔离 | B driver + nono 内核 | C nono 唯一引擎 |
+### 选项 C：nono 作为 P0 主引擎（thin product on nono）★ 推荐
+- **macOS（P0）**：nono 宿主直跑（Seatbelt）——`nono run --profile qn/claude-code -- claude`，agent 进程级受限运行在**真实项目目录**上（无 VM 文件同步问题）。
+- **Windows（P0）**：qn 负责 WSL2 发行版供给，nono 在 WSL2 内运行 agent（Landlock）；qn 把"装好 WSL2+nono"封装成一键体验。
+- **我们的产品层**（不可被 nono 替代的部分）：qn CLI + 最小 Tauri 控制面、claude-code/codex 官方 profiles 的编写与发布、**MCP gateway**（宿主侧 mediation）、审计/授权的呈现与撤销 UX、Windows WSL2 供给链路。
+- 优点：P0 六项几乎全部落到"包装与产品化"上，黑客松窗口内可交付；平台承诺兑现（mac 原生 + win WSL2）；与 guardrails 意图一致（"intentionally thin rather than a broad fork"）。
+- 缺点：进程级隔离弱于 VM（同一宿主内核；Landlock/Seatbelt 不可逃逸但内核漏洞不在防御面内）；nono pre-1.0。
+- 风险与缓解：pre-1.0 → 锁版本 + 我们的 adapter 层隔离其 API（可替换）；WSL2 内核 6.7+ 才有 Landlock 网络限制（WSL2 原生内核常为 6.6.x）→ **P0 前置 spike：验证 WSL2 内核版本/自内核升级路径**；Seatbelt 已被 Apple 标记 deprecated（长期）→ 记录为平台风险，跟踪 nono 上游的 macOS 策略。
+
+### 选项 D（作为 C 的演进路径，非独立选项）：P2 增设"强隔离模式"
+对需要独立内核的合规场景，P2 提供 VZ VM（arcbox）+ guest 内 nono（即选项 B 形态）作为可切换的高档模式。
+ADR-0001/0002 不废弃：降级为 P2 参考/实现路径。
+
+## 3. 对比
+
+| 维度 | A 自研 VM | B VM+nono | C thin-on-nono ★ |
 | --- | --- | --- | --- |
-| 复用度 | 高（arcbox） | 中高（arcbox + nono） | 取决于 nono（存疑） |
-| 平台覆盖 | 三平台 | 三平台（nono 在 guest 内，Linux） | 存疑 |
-| enforcement 精度 | 中 | 高（in-guest 最小权限） | 高（若可行） |
-| 维护成本 | 低 | 中 | 未知 |
+| 复用度（不造轮子） | 低 | 中 | **高** |
+| P0 交付风险（时间盒） | 高 | 高 | **低** |
+| 隔离强度 | VM 级 | VM+进程双层 | 进程级（内核原语，不可逃逸） |
+| 三平台覆盖 | 好 | 好 | mac 原生 / win=WSL2（spike 待验证） |
+| 与 guardrails 对齐 | 部分 | 部分 | **完全** |
 
-## 结论
+## 4. 结论（推荐，待确认）
 
-**待评审**。倾向：若 `nono` 通过五问 → 选项 B；否则选项 A（把 guardrails 的 "security kernel" 职责由 qn-agent 的 enforcement 模块承担，并在 README/ADR 中记录该替代关系）。
-**阻塞项**：`nono` 是什么（上游仓库、license、最近提交、平台矩阵、是否 Linux-only）——请 #2 作者在本 ADR 的 issue/PR 评论中补充。
-**不阻塞**：M0/M1 按 A 路径启动（vf 适配、代答网关均不依赖本决策）；B 若采纳，nono 以 qn-agent 内可选模块接入，不动 driver 层。
+**选项 C 为 P0/P1 引擎，选项 D（VM+nono 强隔离模式）留作 P2。**
+若三人确认，连带修订：ADR-0001（arcbox subtree 降级为 P2 参考）、ADR-0002（后端策略改为"nono adapter + WSL2 供给；VZ/QEMU 转强隔离模式"）、ADR-0004（CredentialBroker 实现改为包装 nono phantom-token 代理，而非演进 arcbox SOCKS5——领域模型与不变式不变）、00/01/09 相应规格联动。
 
-## 后果
+**前置 spike（P0 开工前，B 负责人即 gac0812）**：
+1. WSL2 内核版本与 Landlock network（6.7+）可用性验证；
+2. nono 在 macOS 上跑 claude-code 的 profile 实测（fs/网络/凭证代理行为）；
+3. nono Rust FFI 集成方式确认（作为库链接 vs 子进程调用）。
 
-- 正面：架构分叉被显式记录，两条叙述（guardrails / ADR-0002）不再静默并存。
-- 负面：拍板前 "Sandbox adapter"（P0 第 1 项）的实现深度存在两种解读（纯 driver 适配 vs + nono 集成）。
-- 重审条件：nono 资料补充即重开评审；或 P0 结束时按实际实现回填结论。
+## 5. 后果
+
+- 正面：P0 从"自研四个子系统"变为"包装一个成熟内核 + 产品层"，交付概率大幅上升；与队友架构意图统一。
+- 负面：接受进程级隔离的威胁模型（内核漏洞不在防御面——文档明示）；绑定 nono 上游节奏（pre-1.0）。
+- 重审条件：nono 停止维护/License 变更；或 Windows 原生支持出现；或合规需求要求 VM 级隔离提前。
