@@ -172,6 +172,8 @@ impl ManagedProcess {
                 success: status.success(),
                 stdout: String::from_utf8_lossy(&stdout).into_owned(),
                 stderr: String::from_utf8_lossy(&stderr).into_owned(),
+                stdout_raw: stdout,
+                stderr_raw: stderr,
                 stdout_truncated,
                 stderr_truncated,
                 duration: self.started.elapsed(),
