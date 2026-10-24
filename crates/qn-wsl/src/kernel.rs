@@ -224,6 +224,25 @@ mod tests {
         );
         assert_eq!(
             KernelVersion {
+                major: 6,
+                minor: 0,
+                patch: 0
+            }
+            .landlock_abi_floor(),
+            2
+        );
+        assert_eq!(
+            KernelVersion {
+                major: 7,
+                minor: 0,
+                patch: 0
+            }
+            .landlock_abi_floor(),
+            7,
+            "future major versions take the highest known floor"
+        );
+        assert_eq!(
+            KernelVersion {
                 major: 4,
                 minor: 19,
                 patch: 0
