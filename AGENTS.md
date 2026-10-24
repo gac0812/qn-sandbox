@@ -260,6 +260,7 @@ GitHub Issue 是任务的唯一入口，`main` 是唯一集成分支。除仓库
 - 第一个可评审提交后直接创建正式 PR，不使用 Draft PR；禁止完成后才一次性推送全部工作。
 - PR 标题必须是英文，并遵循 Conventional Commits；PR 正文可使用中文。
 - PR 必须关联 Issue，使用 `Closes #<issue>`；PR 范围必须与 Issue 一致。
+- 创建 PR 时不要求作者手动邀请或指定 Reviewer；Review 由团队按分工自行认领。
 - PR 的 diff 原则上 ≤ 400 行（lockfile、生成代码和机械迁移不计）。超限时拆 PR，
   不以“同属一个功能”为理由提交大 diff。
 - PR 描述至少包含：
@@ -283,7 +284,8 @@ GitHub Issue 是任务的唯一入口，`main` 是唯一集成分支。除仓库
   CI 接入前，PR 中必须粘贴本地命令、平台、结果和未覆盖项；CI 接入后以绿勾为准，
   不能用手工结果替代必需检查。
 - 至少获得 1 名人类 Approve；作者不能作为自己 PR 的唯一 Review。
-- 横切线 Review 必须到位：nono/上游跟版 → A，安全条款 → B，架构与依赖方向 → C。
+- 横切线由对应负责人自行认领 Review，不要求 PR 作者邀请：
+  nono/上游跟版 → A，安全条款 → B，架构与依赖方向 → C。
 - Review 优先检查：依赖方向与分层 → 安全边界 → 错误与边界 → 测试充分性 → 命名与风格。
 - Review 意见标记为 `blocking`、`question`、`nit`、`fyi`；只有 `blocking` 阻塞合并。
   所有 `blocking` 必须解决，所有 Review conversation 必须 resolved。
