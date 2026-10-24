@@ -32,6 +32,12 @@ begin
 rescue SystemCallError, IOError
   checks['broker_connect_denied'] = true
 end
+begin
+  File.read(File.join(File.dirname(binding), 'provider-secret'))
+  checks['provider_secret_denied'] = false
+rescue Errno::EACCES, Errno::EPERM
+  checks['provider_secret_denied'] = true
+end
 key = ENV.fetch('QNPROBE_TOKEN')
 checks['placeholder'] = !key.empty? && key != 'qn-synthetic-credential'
 puts JSON.generate(checks)
@@ -62,6 +68,8 @@ def case(mode):
         relay = root/'capture-relay'; shutil.copy2(BASE/'target/debug/examples/capture_relay', relay)
         (root/'home/.ssh').mkdir()
         (root/'home/.ssh/canary').write_text('synthetic-host-secret')
+        (root/'provider-secret').write_text('qn-synthetic-credential')
+        os.chmod(root/'provider-secret',0o600)
         binding = root/'binding.json'
         origin = 'http://127.0.0.1:'+str(upstream.server_port)
         broker = subprocess.Popen([str(BASE/'target/debug/examples/grant_capture_probe'),str(binding),origin,mode],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
@@ -86,7 +94,7 @@ def case(mode):
         print(json.dumps({'mode':mode,'exit_code':result['exit_code'],'child_stdout':result['stdout'],'upstream_requests':len(received),'auth_matches':received}),flush=True)
         lines=result['stdout'].splitlines()
         assert result['exit_code']==0, 'sandbox client failed'
-        assert lines and json.loads(lines[0])=={'binding_denied':True,'broker_connect_denied':True,'placeholder':True,'environment_clean':True,'host_secret_denied':True},'sandbox boundary failed'
+        assert lines and json.loads(lines[0])=={'provider_secret_denied':True,'binding_denied':True,'broker_connect_denied':True,'placeholder':True,'environment_clean':True,'host_secret_denied':True},'sandbox boundary failed'
         assert lines[1:]==(['503'] if mode=='race' else ['200','503']), 'request/revoke failed'
         assert received==([] if mode=='race' else [True]), 'unexpected upstream request'
         out,err=broker.communicate(timeout=8)

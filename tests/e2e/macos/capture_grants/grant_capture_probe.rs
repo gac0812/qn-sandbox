@@ -57,9 +57,14 @@ async fn serve() -> Result<(), Box<dyn std::error::Error>> {
             continue;
         }
         provider_calls += 1;
-        let material = CaptureBytes::new(
-            br#"{"material":{"type":"secret","value":"qn-synthetic-credential"}}"#.to_vec(),
-        )?;
+        let home = camino::Utf8Path::new(path).parent().ok_or(CaptureError::Rejected)?;
+        let provider = qn_broker::provider::CommandProvider::new(
+            "/bin/cat".into(), home.to_path_buf(), Duration::from_secs(3),
+        )?.arg(home.join("provider-secret").as_str());
+        let secret = provider.capture(&qn_bootstrap::process_policy(), tokio_util::sync::CancellationToken::new()).await?;
+        let material = CaptureBytes::new(serde_json::to_vec(&serde_json::json!({
+            "material": {"type": "secret", "value": secret.expose()}
+        }))?)?;
         if mode == "race" {
             registry.revoke(handle, session)?;
         }
