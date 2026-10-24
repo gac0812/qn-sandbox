@@ -37,6 +37,10 @@ use crate::error::Error;
 
 mod environment;
 use environment::EnvironmentChange;
+mod managed;
+pub use managed::{
+    ManagedOutput, ManagedProcess, ProcessEnd, ProcessPolicy, TerminationSafety, spawn_managed,
+};
 
 /// 默认超时。调用方应经 qn-config 的用户配置覆盖（M0 阶段先用常量）。
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(120);
@@ -119,6 +123,18 @@ impl CmdSpec {
 
     fn effective_label(&self) -> &str {
         self.label.as_deref().unwrap_or(&self.program)
+    }
+
+    fn command(&self) -> Command {
+        let mut command = Command::new(&self.program);
+        command.args(&self.args);
+        for change in &self.env {
+            change.apply(&mut command);
+        }
+        if let Some(cwd) = &self.cwd {
+            command.current_dir(cwd);
+        }
+        command
     }
 }
 
@@ -211,22 +227,14 @@ async fn run_inner(spec: &CmdSpec, cancel: Option<CancellationToken>) -> Result<
     let max_output = spec.max_output_bytes.unwrap_or(DEFAULT_MAX_OUTPUT_BYTES);
     let label = spec.effective_label().to_owned();
 
-    let mut command = Command::new(&spec.program);
+    let mut command = spec.command();
     command
-        .args(&spec.args)
         .kill_on_drop(true)
         // stdin=null：run-to-completion 语义的探测/管理命令不需要标准输入。
         // TODO(#27): 交互式 agent 会话需要 spawn + stdin 透传的长会话 API。
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
-    for change in &spec.env {
-        change.apply(&mut command);
-    }
-    if let Some(cwd) = &spec.cwd {
-        command.current_dir(cwd);
-    }
-
     tracing::info!(
         label = %label,
         program = %spec.program,

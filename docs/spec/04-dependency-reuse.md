@@ -40,6 +40,7 @@
 | 序列化 ⭐ / CLI ⭐ | `serde`+`serde_json`+`toml` / `clap`(derive) |
 | ID ⭐ / 路径 ⭐ / 目录 | `uuid`(v7) / `camino` / `dirs`（qn-config 独占） |
 | 重试 / 文件锁 ⭐ | `backon` / `fd-lock` |
+| 受管进程生命周期 | `process-wrap` 8.2.2（#65）：复用进程组/Job Object；infra 定义策略接口，bootstrap 选择平台包装器；全平台传递包 44 个、锁文件增量 20 个，按 #65 选型例外接受；关闭库的 tracing feature，保持 Rust 1.85 基线；不是安全沙箱 |
 | RPC/契约（M3 起） | ConnectRPC 生态（`connect-rpc`/`prost`；与契约生成同源） |
 | 校验 / 时间 | `garde` / `jiff`（M1 拍板其一，禁止混用） |
 
