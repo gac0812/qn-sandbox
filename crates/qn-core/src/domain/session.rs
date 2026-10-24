@@ -81,8 +81,10 @@ impl SessionState {
     pub fn transition(&self, next: Self) -> Result<Self> {
         let allowed = matches!(
             (*self, next),
-            (Self::Starting, _)
-                | (Self::Running, Self::Running | Self::Stopped | Self::Failed)
+            (
+                Self::Starting,
+                Self::Starting | Self::Running | Self::Stopped | Self::Failed
+            ) | (Self::Running, Self::Running | Self::Stopped | Self::Failed)
                 | (Self::Stopped, Self::Stopped)
                 | (Self::Failed, Self::Failed)
         );
@@ -190,7 +192,7 @@ mod tests {
                     assert_eq!(
                         result,
                         Ok(to),
-                        "allowed transition from {from:?} to {to:?} should be a no-op"
+                        "allowed transition from {from:?} to {to:?} should return the requested state"
                     );
                 } else {
                     assert!(
