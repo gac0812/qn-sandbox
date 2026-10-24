@@ -11,12 +11,13 @@ BASE = '9fab27643401ea37b5ebb81843f366cbcc5784ef'
 GRANTS = 'a483fe1fb696f28c7deee69cd3fdec1ec58adeb2'
 CHANNEL = '54c7bda238df9a2bac670c8a4e06e7a5f284f421'
 PROVIDER = '581970816c8d09f72d5db3d6762ecc2e1819c571'
+IDENTITY = '41248e80cb3b917d4e93f3ea8521d8788bc50eb7'
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--nono', required=True, type=pathlib.Path)
 args = parser.parse_args()
 fixtures = pathlib.Path(__file__).resolve().parent
 repo = pathlib.Path(subprocess.check_output(['git', 'rev-parse', '--show-toplevel'], cwd=fixtures, text=True).strip())
-for revision in [BASE, GRANTS, CHANNEL, PROVIDER]:
+for revision in [BASE, GRANTS, CHANNEL, PROVIDER, IDENTITY]:
     subprocess.run(['git', 'cat-file', '-e', revision + '^{commit}'], cwd=repo, check=True)
 
 
@@ -33,7 +34,8 @@ with tempfile.TemporaryDirectory(prefix='qn-capture-replay-') as temporary:
         # These are exact library sources from the pending PRs, never a rewritten registry.
         for revision, names in [(GRANTS, ['src/grants.rs', 'src/grant_tests.rs']),
                                 (CHANNEL, ['src/capture.rs', 'src/capture_tests.rs']),
-                                (PROVIDER, ['src/provider.rs'])]:
+                                (PROVIDER, ['src/provider.rs']),
+                                (IDENTITY, ['src/identity.rs', 'src/identity_tests.rs'])]:
             for name in names:
                 (broker / name).write_bytes(show(revision, 'crates/qn-broker/' + name))
         manifest = show(CHANNEL, 'crates/qn-broker/Cargo.toml').decode()
@@ -43,10 +45,11 @@ with tempfile.TemporaryDirectory(prefix='qn-capture-replay-') as temporary:
         added = ['qn-infra = { path = "../qn-infra", version = "0.1.0" }', 'camino = "1"', 'tokio-util = "0.7"']
         bootstrap = 'qn-bootstrap = { path = "../qn-bootstrap", version = "0.1.0" }'
         assert all(line in provider_manifest for line in added + [bootstrap])
-        manifest = manifest.replace('[dependencies]', '[dependencies]' + chr(10) + chr(10).join([core_dependency] + added))
+        assert 'serde_json = "1"' in show(IDENTITY, 'crates/qn-broker/Cargo.toml').decode()
+        manifest = manifest.replace('[dependencies]', '[dependencies]' + chr(10) + chr(10).join([core_dependency, 'serde_json = "1"'] + added))
         manifest = manifest.replace('[dev-dependencies]', '[dev-dependencies]' + chr(10) + bootstrap)
         (broker / 'Cargo.toml').write_text(manifest)
-        (broker / 'src/lib.rs').write_bytes(show(GRANTS, 'crates/qn-broker/src/lib.rs') + b'pub mod capture; pub mod provider;')
+        (broker / 'src/lib.rs').write_bytes(show(GRANTS, 'crates/qn-broker/src/lib.rs') + b'pub mod capture; pub mod provider; pub mod identity;')
         (broker / 'examples').mkdir()
         for name in ['capture_relay.rs', 'grant_capture_probe.rs']:
             shutil.copyfile(fixtures / name, broker / 'examples' / name)
