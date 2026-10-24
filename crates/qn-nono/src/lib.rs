@@ -29,6 +29,7 @@ pub mod audit;
 pub mod error;
 pub mod installer;
 pub mod manifest;
+pub mod profile;
 pub mod target;
 pub mod version;
 

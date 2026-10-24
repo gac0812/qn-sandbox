@@ -8,6 +8,19 @@ use std::io;
 /// Failures while installing, probing, or parsing the locked `nono` release.
 #[derive(Debug, thiserror::Error)]
 pub enum NonoError {
+    /// A workspace would expose a protected host/control location.
+    #[error(
+        "unsafe project directory; select a dedicated project outside protected host and control paths"
+    )]
+    UnsafeWorkdir,
+    /// The requested managed profile is not implemented by this compiler.
+    #[error("unsupported managed profile; use qn/claude-code or qn/codex")]
+    UnsupportedProfile,
+    /// An offline profile cannot silently ignore a requested grant.
+    #[error(
+        "grant binding is required before preparing an online profile; configure the host broker"
+    )]
+    GrantBindingRequired,
     /// A bounded native query exited unsuccessfully; raw output is omitted.
     #[error("nono {operation} failed with exit code {code:?}; check the managed state")]
     CommandFailed {

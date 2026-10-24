@@ -14,7 +14,7 @@
 | `audit::AuditReader` | 隔离 HOME/XDG、锁版探测、受管执行的 typed audit list/show | #68（原生记录，不等于完整 AuditEvent） |
 | `version` | 显式绝对路径调用 `nono --version`，锁版比对、5 秒超时、单流 1 KiB 输出上限 | A-0.5 首片（#41） |
 | `runner` | 经 `qn-infra::process`（#19）调用 nono CLI + 契约测试 | M1（未开始） |
-| `profile_gen` | core Profile → nono profile JSON | M1（未开始） |
+| `profile::PreparedProfile` | 私有运行目录、物理路径重叠检查、离线 profile 渲染与命令构造 | #75 / #77（在线绑定待 broker） |
 | `audit_tail` / `why` | 审计流采集、拒绝原因透传 | M1（未开始） |
 
 ## 安全红线
@@ -110,6 +110,12 @@ root 布局与 #46 探测一致（home/config/state/cache/tmp），须为受管�
 `list/show` 使用固定参数、空父环境、5 秒查询限时和单流 1 MiB 上限；show 核对完整 native ID。
 默认 Debug/错误不回显载荷。DTO 仅呈现原生记录，不证明来源完整/可信，不推断 filesystem Denial，
 也不表示 #66 的统一事件查询或攻击 U8 已验收。schema 样本见 `tests/fixtures/nono-0.80.0/audit-*.json`。
+
+`PreparedProfile::prepare` 是阻塞准备步骤，异步调用方放入 `spawn_blocking`；`RuntimePaths` 必须来自可信装配层，
+包含实际宿主 home、控制目录、已校验引擎及工具 PATH。工作目录不能覆盖这些位置或控制程序。
+生成策略仅支持两个官方引用的离线基线：网络阻断、禁用能力提升、无 hooks/明文凭证/bypass。
+带 grant 请求直接拒绝，不能当作在线官方 profile 已完成。调用方保留准备对象直到执行结束，
+或显式 `persist` 将审计目录交给注册表管理。Linux 的安全性不依赖 deny-within-allow；原生 canary 验收由 #75 跟踪。
 
 真实只读 smoke：`QN_TEST_NONO=/verified/nono QN_TEST_ROOT=/isolated/probe-root cargo test --locked -p qn-nono --test audit_reader -- --native`
 （只使用含合成审计记录的隔离根；默认不带 `--native` 时跑 Rust 子进程回归）。
