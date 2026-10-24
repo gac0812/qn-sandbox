@@ -44,37 +44,54 @@ AI Agent（编码代理、自动化流程）需要一个地方安全地执行代
   跨架构 guest（如 Apple Silicon 上跑 x86_64）属非目标。
 - Windows 基线 = WSL2 可用（`wsl --version` 正常）。这是 Windows Home 的唯一可行路径，也是 Pro 的推荐路径。
 
-## 4. 对外能力与里程碑
+## 4. 交付优先级与里程碑（P0/P1/P2 ↔ M0–M5）
 
-### M0 — 规范与骨架（当前）
-- 规范文档集、ADR、cargo workspace 骨架、CI 骨架（fmt/clippy/test/deny）。
+> `P0/P1/P2` 是仓库级交付优先级（GitHub 标签，见 CONTRIBUTING.md，**不是版本号/分支名**）；
+> `M0–M5` 是工程工作包编号，供各规范交叉引用。原则：**P0 = 先打通安全路径**（单平台即可交付）、
+> P1 = 平台广度与统一 API、P2 = 高级能力。
+
+| 交付优先级 | 工作包 | 一句话 |
+| --- | --- | --- |
+| **P0** | M0 + M1 | 安全路径端到端（macOS Apple Silicon） |
+| **P1** | M2 + M3 + M4 | 三平台覆盖 + 统一 API 面 |
+| **P2** | M5 | 高级能力 |
+
+### P0 — 安全路径（黑客松核心交付）
+
+**M0 — 规范与骨架（当前）**
+- 规范文档集、ADR、cargo workspace 骨架、CI 骨架接入（fmt/clippy/test/deny，TODO-001~003）。
 - 复用引入：arcbox-custom 以 subtree 进入。
+- 沙箱引擎/enforcement 层的架构对齐拍板（ADR-0005，不阻塞 M1 启动）。
 
-### M1 — macOS 复基线（先证明"复用"成立）
-- 在 Apple Silicon 上，用 `qn` CLI 完成 arcbox 已有能力子集：创建/启动/停止/删除沙箱、exec、文件进出。
-- exec 支持 **PTY/交互式流**（跑交互式 Agent CLI 的硬前提）。
-- **凭证代答网关 v0**：宿主凭证库（Keychain / Credential Manager）+ 认证代答网关（复用 arcbox SOCKS5 代理底座）；沙箱内只有无凭证出口代理与凭证引用，凭证明文不进沙箱（含环境变量）。
-- **Agent 应用模板 v0**：`qn create --agent claude-code` 一条命令创建预装运行时与 Claude Code 的沙箱，凭证自动接入。
-- Rust CLI（`qn`）为唯一入口；桌面 UI 不在 M1。
-- 验收：干净 Mac 上 5 分钟内完成"安装 → `qn create --agent claude-code` → 沙箱内 Claude Code 可用（全程未手工填写任何 API key）"；同流程 E2E 脚本跑通 exec/文件。
+**M1 — macOS 安全路径**（含自 M4 提前的 MCP 网关最小切片，与审计/攻击演示）
+- 沙箱适配器（Sandbox adapter）：`qn-driver-vf` 完成 create/start/stop/rm/exec/文件进出；exec 支持 **PTY/交互式流**（跑交互式 Agent CLI 的硬前提）。
+- **凭证代答网关 v0**（Credential broker）：宿主凭证库（Keychain）+ 认证代答网关（复用 arcbox SOCKS5 代理底座）；沙箱内只有无凭证出口代理与短时占位符/句柄，凭证明文不进沙箱。
+- **MCP 网关最小切片**：覆盖 claude-code / codex 两个 profile 所需的宿主侧 MCP 代答（协议通用化延后至 M4）。
+- **Agent profile v0**：`qn create --agent claude-code`（含 codex）一条命令创建沙箱，凭证自动接入。
+- **文件系统/网络默认拒绝**，按 profile 显式放行（guardrails 不变式；细则见 08 §2/§3）。
+- **最小桌面控制面**：Tauri 壳复用 qn-daemon——状态、授权、审计可见与撤销（完整桌面体验属 P2）。
+- **审计与攻击演示**：`qn audit` 查询；攻击演示剧本（尝试读取凭证/越权出站/环境变量探测，全部被拦截且产生审计事件）。
+- 验收：干净 Mac 上 5 分钟内完成"安装 → `qn create --agent claude-code` → 沙箱内 Claude Code 可用（全程零明文凭证）"；`qn revoke` 立即断流；攻击演示全拦截。
 
-### M2 — Intel Mac
-- 镜像体系支持双架构（`--arch aarch64|x86_64`），VZ 后端按宿主架构选择 guest；Agent 应用模板出双架构版本。
+### P1 — 平台广度与统一 API 面
+
+**M2 — Intel Mac**
+- 镜像体系支持双架构（`--arch aarch64|x86_64`），VZ 后端按宿主架构选择 guest；Agent profile 出双架构版本。
 - 验收：同一套 CLI 命令在 Intel Mac 上跑通 M1 的 E2E。
 
-### M3 — Windows (WSL2)
+**M3 — Windows (WSL2)**
 - `qn-driver-wsl`：WSL2 发行版作为 Linux 载体，其上以容器（crun/runc 或 Docker 引擎可选）提供每沙箱隔离。
-- exec / 文件走 WSL 的互操作或 guest agent；凭证代理在 Windows 凭证库（Credential Manager）上等价落地。
+- exec / 文件走 WSL 的互操作或 guest agent；代答网关在 Windows 凭证库（Credential Manager）上等价落地。
 - 验收：Windows 11 Home，`winget install` 后跑通同一 E2E（含 `--agent claude-code` 全流程零手工凭证）。
 
-### M4 — 统一 API 面
-- 守护进程 + HTTP API（ConnectRPC，与 arcbox 协议对齐），**宿主侧 MCP server**（沙箱即 MCP 工具，供 Agent 框架调用），TS/Python SDK（契约生成）。
-- **MCP 网关（凭证代答 v1）**：协议感知代答（stdio 类 MCP 服务器由宿主代认证），托管配置全面启用引用校验（明文即拒绝）。
-- **MCP 配置代管**：`qn mcp` 子命令在宿主机侧管理沙箱内 Agent 应用的 MCP 配置，只写凭证引用（`${qn:secret/<name>}`），写明文即拒绝。
-- 验收：同一份契约生成的 SDK 在三平台驱动同一 E2E；沙箱内 Agent 应用的 MCP 服务器配置全程零明文凭证。
+**M4 — 统一 API 面**
+- 守护进程 + HTTP API（ConnectRPC，与 arcbox 协议对齐），TS/Python SDK（契约生成）。
+- **MCP 网关协议通用化**：M1 最小切片扩展为协议感知代答（stdio 类 MCP 服务器由宿主代认证）。
+- **MCP 配置代管**：`qn mcp` 在宿主机侧管理沙箱内 Agent 应用的 MCP 配置，只写凭证引用（`${qn:secret/<name>}`），写明文即拒绝；宿主侧 **qn-mcp server**（沙箱即 MCP 工具，供 Agent 框架调用）。
+- 验收：同一份契约生成的 SDK 在三平台驱动同一 E2E；沙箱内 MCP 服务器配置全程零明文凭证。
 
-### M5 — 高级能力（范围再议）
-- 快照/恢复、默认拒绝的网络白名单（复用 arcbox SOCKS5 代理并扩展认证注入）、端口转发、资源配额、镜像仓库、凭证授权审计报表。
+### P2 — 高级能力（M5，范围再议）
+- 快照/恢复、网络白名单管理 UI、端口转发、资源配额、镜像仓库、凭证授权审计报表、QEMU 兜底后端、完整桌面体验。
 
 ## 5. 非目标（明确不做，防止范围蔓延）
 
@@ -83,7 +100,7 @@ AI Agent（编码代理、自动化流程）需要一个地方安全地执行代
 - ❌ Windows 原生进程级沙箱（AppContainer/Seatbelt 路线）——那是另一个产品形态，与"Linux 沙箱 + 统一 API"冲突。若需要，作为独立后端再立项。
 - ❌ 非 Linux guest（BSD / Windows guest）。
 - ❌ 凭证云同步/团队凭证库——凭证只存本机 OS 凭证库；多设备同步交给用户自己的密码管理器（导入导出作为显式功能，M5 再议）。
-- ❌ GUI 桌面端（M5 之前；届时优先 Tauri 复用 qn-daemon，而非移植 SwiftUI）。
+- ❌ 完整 GUI 桌面体验（P0 仅含**最小 Tauri 控制面**：状态/授权/审计可见与撤销；完整桌面体验属 P2，基于 Tauri 复用 qn-daemon，不移植 SwiftUI）。
 - ❌ 凭证以任何形式进入沙箱（环境变量、argv、文件、短时 token 下发）——这是不变式，不是取舍（ADR-0004 / 08 §4）。
 
 ## 6. 竞品/参考项目的取舍结论

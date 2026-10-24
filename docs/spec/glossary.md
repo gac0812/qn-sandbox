@@ -24,7 +24,10 @@
 | **凭证代答网关（Credential Broker / Gateway）** | 宿主侧组件：从 OS 凭证库代持秘密，按 grant 在出站流量上代答（附加认证），支持撤销与审计（ADR-0004）；凭证明文绝不进入沙箱 | secret manager / vault / 注入（禁用） |
 | **代答（on-the-wire substitution）** | 宿主网关在出站流量的认证字段上附加凭证的动作；沙箱内进程全程不见凭证 | 注入（禁用——注入意味着凭证进入沙箱） |
 | **凭证引用（SecretRef）** | 沙箱配置中对宿主秘密的命名引用（`${qn:secret/<name>}`）；沙箱内出现明文密钥即违规 | key / 密钥 |
-| **Agent 应用模板** | 预装某主流 Agent CLI（Claude Code、Codex、dsh 等）及其运行时的官方镜像模板，`qn create --agent <app>` 直接使用 | docker image |
+| **Agent 应用模板（Profile）** | 预装某主流 Agent CLI（Claude Code、Codex、dsh 等）及其运行时与**最小权限默认值**（fs/网络按 profile 放行）的官方模板，`qn create --agent <app>` 直接使用；EN: agent profile | docker image |
+| **占位符 / broker 句柄（placeholder / handle）** | 可进沙箱的**非凭证**引用形态：短生命周期、受限作用域（guardrails 措辞 placeholders or broker handles）；撤销会话即失效 | token（禁止）、密钥 |
+| **P0 / P1 / P2** | 仓库交付优先级（GitHub 标签）：P0 安全路径、P1 平台广度与统一 API、P2 高级能力；不是版本号或分支名 | 版本号 / 分支名 |
+| **v0** | 空基线上的不可变 git tag（贡献规范：不得移动、重建或强推） | 起始版本号 |
 | **AgentAppCatalog** | Agent 应用模板与所需 SecretRef 清单的登记表（qn-core 领域对象） | 模板列表 |
 | **subtree (arcbox/)** | 以 git subtree 引入的只读上游代码 | vendor / fork |
 | **契约** | RPC 接口定义文件（proto 等），API 面的唯一事实源 | 接口文档 |

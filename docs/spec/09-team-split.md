@@ -24,16 +24,18 @@
 
 ## 3. 按里程碑的分工矩阵
 
+> 里程碑已按 P0/P1/P2 对齐（00 §4）：**M1 即 P0 核心**，含 MCP 网关最小切片、默认拒绝策略、审计/攻击演示与最小 Tauri 控制面。
+
 （主导 = 交付负责人；支援 = 协作并承担对应评审）
 
 | 里程碑 | 成员 A（macOS/上游） | 成员 B / gac0812（Windows/agent） | 成员 C（架构/API） |
 | --- | --- | --- | --- |
-| **M0 骨架** | 引入 arcbox subtree（ADR-0001 落地）；复核上游能力清单与许可 | 搭 Windows CI 矩阵（wsl --install workflow）；实现 `qn-infra::process`、文件锁、`qn-config` 平台路径 | 主导：cargo workspace、deny.toml/clippy 配置、PR/issue 模板、`qn-core` 初版（领域模型 + ports + registry） |
-| **M1 mac 基线** | 主导：`qn-driver-vf` 适配层、镜像导入链路、macOS E2E 剧本 | 完成 WSL2 路线 spike（手工验证容器方案可行性），产出结论文档（影响 ADR-0002 复审）；`qn-agent` 调研 | 定稿 ports v1 并**冻结**；`qn-cli` 初版；对 A 的实现做 port 语义 review |
-| **M2 Intel Mac** | 主导：双架构镜像体系（`--arch`）、Intel E2E | 预研 WSL2 内嵌套 KVM 备选（只 spike 不实现，供 M5 决策） | 支援 CLI 收尾；文档与 glossary 同步 |
-| **M3 Windows** | 支援：E2E 剧本库、镜像构建脚本复用到 x86_64 | 主导：`qn-driver-wsl`（发行版编排、容器隔离、互操作桥接）、Windows E2E | review + 按需扩展 core；陪跑安全横切评审（B 主守） |
-| **M4 统一 API 面** | 支援：VZ 侧协议适配验证 | 支援：WSL 侧协议适配验证 | 主导：`qn-daemon`、契约（proto/buf）、`qn-mcp`、TS/Python SDK、gen-drift CI |
-| **M5 高级能力** | 主导：快照/恢复（VZ 能力）、网络策略（复用上游 SOCKS5 代理） | 主导：资源配额、Windows 安装引导与兼容性 | 主导：契约演进、SDK/文档配套 |
+| **M0 骨架** | 引入 arcbox subtree（ADR-0001 落地）；复核上游能力清单与许可 | 搭 Windows CI 矩阵（wsl --install workflow）；实现 `qn-infra::process`、文件锁、`qn-config` 平台路径 | 主导：cargo workspace、deny.toml/clippy 配置、PR/issue 模板、`qn-core` 初版（领域模型 + ports + registry）；补 ADR-0005 所需 nono 资料（与 #2 作者对接） |
+| **M1 mac 安全路径（P0）** | 主导：`qn-driver-vf` 适配层、镜像导入链路、macOS E2E 剧本 | WSL2 路线 spike（验证容器方案可行性，产出结论文档）；`qn-agent` 出口代理；主导**攻击演示与审计剧本**（安全横切线） | 定稿 ports v1 并**冻结**；`qn-cli` 初版；主导**MCP 网关最小切片**与**最小 Tauri 控制面**；对 A 的实现做 port 语义 review |
+| **M2 Intel Mac** | 主导：双架构镜像体系（`--arch`）、Intel E2E | 攻击演示剧本扩展至 Windows 预案；预研 WSL2 内嵌套 KVM 备选（只 spike 不实现，供 P2 决策） | MCP 网关切片收尾；文档与 glossary 同步 |
+| **M3 Windows** | 支援：E2E 剧本库、镜像构建脚本复用到 x86_64 | 主导：`qn-driver-wsl`（发行版编排、容器隔离、互操作桥接）、Windows E2E、代答网关 Windows 落地 | review + 按需扩展 core；陪跑安全横切评审（B 主守） |
+| **M4 统一 API 面** | 支援：VZ 侧协议适配验证 | 支援：WSL 侧协议适配验证 | 主导：`qn-daemon`、契约（proto/buf）、MCP 网关协议通用化、TS/Python SDK、gen-drift CI |
+| **M5 高级能力（P2）** | 主导：快照/恢复（VZ 能力） | 主导：资源配额、Windows 安装引导与兼容性 | 主导：契约演进、SDK/文档配套 |
 
 ## 4. 接口（port）变更流程
 
