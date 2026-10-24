@@ -56,6 +56,24 @@ U4 记为 `GAP`（引用 spike① #16；裁决 #17），并**计入失败**。AB
 U4 输出 "manual triage required"，不断言回归。升级内核（WSL ≥3.0.3 自带 6.18）后
 GAP 标注消失，U4 必须 PASS。
 
+## 升级内核后的复跑记录（2026-10-24，WSL 3.0.3 / 内核 6.18.54.1 / ABI V6）
+
+```text
+[PASS] U1  fs denial
+[FAIL] U2  env sentinel LEAKS（不变，引擎行为）
+[PASS] U3  argv（probe rc=0）
+[FAIL] U4  outbound ALLOWED despite Landlock V6 —— GAP=0，按套件语义正确归类为违规
+[SKIP] U5/U6/U7（M4）
+[PASS] U8  留痕
+== summary: PASS=3 FAIL=2 SKIP=3 GAP=0 ==
+```
+
+U4 的解读随内核升级而变化：内核已具备强制能力（探针 ABI 7），FAIL 的根因是
+**nono 默认网络姿态 = outbound allowed（与内核无关）**。修复路径已验证：调用层传
+`--allow-domain` 白名单即激活"默认拒绝 + 白名单"（白名单外 rc=56、内 200）——
+qn 的启动器总是携带 profile 白名单后，经 qn 跑的 U4 应转 PASS。届时本套件应增加
+"经 qn 启动"的执行形态。详见 spike① 报告 §4b 与决策 issue #17。
+
 ## 与 CI 的关系
 
 CI runner 无 nono，本套件**不进 CI**；触及 08 机制代码的 PR 必须手动执行并把
