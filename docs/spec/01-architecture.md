@@ -130,6 +130,16 @@ Unix 进程组或 Windows Job Object。取消/超时先终止再回收；父进�
 #46 的零缓存撤销 → 按请求检查 grant；#48 的 stderr 歧义 → 显式证据来源与完整性。
 这些前期实测不是完整 Agent、broker 或跨平台 E2E 的完成证明。
 
+### 4.2 引擎安装与诊断契约（#114/#117）
+
+按 #14/#47 用户委托，由已本地验证的 install/doctor 消费者推动最小 EngineSetup port：
+`run(SetupOperation::{Install,Inspect}) -> SetupFuture`；future 输出
+`Result<EngineInstallation,SetupError>`。core 仅承载 std/camino 类型，不依赖 adapter 或运行时。
+Install 显式下载/修复；Inspect 不下载/修复，须先验证完整性再运行版本探测。
+成功只证明托管引擎字节/版本，不证明隔离、凭证、完整执行树清理或 WSL 就绪。
+调用方等待操作完成，丢弃 future 不保证阻塞 IO 取消；adapter 脱敏全部公开错误链，
+surface 转义路径控制字符。#117 仅发布契约，bootstrap/CLI/adapter 接线另见 #114。
+
 ## 5. 数据流（两个代表场景）
 
 **场景 A：`qn run --agent claude-code`（P0 主路径）**
