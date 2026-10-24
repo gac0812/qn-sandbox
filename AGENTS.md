@@ -198,7 +198,7 @@ fs/网络默认拒绝、按 profile 放行；特权动作必须留审计事件�
 
 - 分支：`<type>/<issue>-<slug>`（`feat/4-credential-broker`、`docs/8-architecture`）；短生命周期。
 - Conventional Commits 英文标题，scope 用 crate 名去 `qn-` 前缀（core/nono/broker/gateway/wsl/daemon/cli/ui/mcp/…）。
-- 一个提交一件事；AI 提交正文加 `Co-authored-by:` 署名，不伪造人类作者。
+- 一个提交一件事。
 - **AI 不自行合并、不 push `main`**；PR 需 ≥1 人类 review（CONTRIBUTING 要求）。
 
 ---
