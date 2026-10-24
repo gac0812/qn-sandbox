@@ -12,6 +12,7 @@ yanked = "deny"
 
 [licenses]
 version = 2
+private = { ignore = true }
 allow = [
     "MIT",
     "Apache-2.0",
