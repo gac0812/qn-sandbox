@@ -73,13 +73,14 @@ U2_OUT="$(SENTINEL_ENV_TMP=1; export SENTINEL_VALUE="$SENTINEL"; nono_shell 'env
 if printf '%s' "$U2_OUT" | grep -qE '^0$'; then
     record PASS U2 "parent env sentinel does not leak into sandbox"
 else
-    record FAIL U2 "parent env sentinel LEAKS into sandbox env — violates guardrails invariant (credentials never enter sandbox env); needs #27 env hygiene at every spawn site"
+    record FAIL U2 "parent env sentinel LEAKS into sandbox env — violates guardrails invariant (credentials never enter sandbox env); nono v0.80 has no env-scrub flag (--help survey), so qn-nono must scrub env at every spawn site (#27 env hygiene is a hard M1 prerequisite)"
 fi
 
 # ---------- U3: 凭证不进 argv（哨兵不得出现在沙箱内进程命令行） ----------
+# 注：grep 模式用 [S] 括号技巧避免自匹配（ps 会看到 grep/sh 自己的 argv）。
 if command -v ps >/dev/null 2>&1; then
     export SENTINEL_VALUE="$SENTINEL"
-    U3_OUT="$(nono_shell 'ps -eww -o args 2>/dev/null | grep -c SENTINEL_VALUE || true')"
+    U3_OUT="$(nono_shell 'ps -eww -o args 2>/dev/null | grep -c "SENTINEL_[V]ALUE" || true')"
     unset SENTINEL_VALUE
     if printf '%s' "$U3_OUT" | grep -qE '^0$'; then
         record PASS U3 "sentinel not visible in sandbox process argv"

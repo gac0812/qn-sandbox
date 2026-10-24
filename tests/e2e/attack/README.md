@@ -44,4 +44,15 @@ CI runner 无 nono，本套件**不进 CI**；触及 08 机制代码的 PR 必�
 ## 扩展点（按里程碑）
 
 - M2：Windows lane 形态 = 在 qn-wsl 供给的 WSL2 发行版内跑同一脚本（无 macOS 分支需要写）。
-- M4：补 U5/U6/U7（对接 qn-broker/qn-gateway 的真实接口）。
+- M4：补 U5/U6/U7（对接 qn-broker/qn-gateway 的真实接口）。nono v0.80 已具备
+  `--allow-domain <DOMAIN_OR_URL>`（支持 URL+路径 glob，如 `https://github.com/org/**`）
+  与 `--network-profile`——U5 的代理白名单断言可直接建立在其上。
+
+## v1 实测记录（2026-10-24，WSL2 Ubuntu-24.04 + nono v0.80.0 + Landlock V3）
+
+- PASS：U1（fs 拒绝）、U8（否认留痕）
+- **FAIL（真实发现）**：U2 —— nono 默认透传父进程 env，且无 env 清理旗标；
+  guardrails"凭证不进 env"在引擎层不设防，**qn-nono 适配器必须在每次拉起时
+  剥离宿主 env（#27 env_clear 从增强升级为 M1 硬前置）**
+- FAIL（KNOWN-GAP）：U4 —— ABI V3 无法内核级拒绝出站（#16/#17，升级内核后应转 PASS）
+- SKIP：U6/U7（M4 组件依赖）
