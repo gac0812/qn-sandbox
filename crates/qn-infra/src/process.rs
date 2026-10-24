@@ -35,6 +35,9 @@ use tokio_util::sync::CancellationToken;
 
 use crate::error::Error;
 
+mod environment;
+use environment::EnvironmentChange;
+
 /// 默认超时。调用方应经 qn-config 的用户配置覆盖（M0 阶段先用常量）。
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(120);
 
@@ -46,14 +49,14 @@ const STDERR_SUMMARY_BYTES: usize = 512;
 
 /// 外部命令描述（不可变 builder）。
 ///
-/// 只接受 argv 数组与显式 env 追加，不接受 shell 字符串——这是
+/// 只接受 argv 数组与显式环境编辑，不接受 shell 字符串——这是
 /// spec 08 §5 的强制约束：不提供隐式 shell 解释入口。
 #[derive(Debug, Clone)]
 #[must_use = "CmdSpec is a builder; call run/run_checked on it"]
 pub struct CmdSpec {
     program: String,
     args: Vec<String>,
-    env: Vec<(String, String)>,
+    env: Vec<EnvironmentChange>,
     cwd: Option<camino::Utf8PathBuf>,
     timeout: Option<Duration>,
     max_output_bytes: Option<usize>,
@@ -87,12 +90,6 @@ impl CmdSpec {
         S: Into<String>,
     {
         self.args.extend(args.into_iter().map(Into::into));
-        self
-    }
-
-    /// 追加（或覆盖）一个环境变量；其余环境继承自当前进程。
-    pub fn env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
-        self.env.push((key.into(), value.into()));
         self
     }
 
@@ -223,11 +220,9 @@ async fn run_inner(spec: &CmdSpec, cancel: Option<CancellationToken>) -> Result<
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
-    for (key, value) in &spec.env {
-        command.env(key, value);
+    for change in &spec.env {
+        change.apply(&mut command);
     }
-    // TODO(#27): env_clear/env_remove —— qn-nono 拉起沙箱进程前必须能剥离
-    // 宿主环境中的凭证变量（08 §4：凭证不进沙箱进程链）。
     if let Some(cwd) = &spec.cwd {
         command.current_dir(cwd);
     }
