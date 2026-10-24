@@ -92,8 +92,8 @@ else
 fi
 
 # ---------- U3: 凭证不进 argv（哨兵不得出现在沙箱内进程命令行） ----------
-# 判定门 = PS_RC=0（ps 正常必有输出行，[ -s ] 仅作副证）；匹配用 [V] 括号技巧
-# 避免自匹配。探测失败一律 FAIL inconclusive；仅"宿主无 ps"记 SKIP。
+# 判定门 = PS_RC=0；匹配用 [V] 括号技巧避免自匹配。
+# 探测失败一律 FAIL inconclusive；仅"宿主无 ps"记 SKIP。
 if command -v ps >/dev/null 2>&1; then
     export SENTINEL_VALUE="$SENTINEL"
     U3_SESS="$(nono_shell "ps -eww -o args > '$TMPROOT/ps.out'; echo PS_RC=\$?")"
