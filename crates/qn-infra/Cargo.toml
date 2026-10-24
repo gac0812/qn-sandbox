@@ -4,6 +4,14 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+description = "Shared mechanisms (process runner, ...) for qn-sandbox; no domain concepts"
+
+[dependencies]
+tokio = { version = "1", features = ["process", "time", "io-util", "rt", "macros"] }
+tokio-util = { version = "0.7" }
+thiserror = "2"
+tracing = "0.1"
+camino = "1"
 
 [lints]
 workspace = true
