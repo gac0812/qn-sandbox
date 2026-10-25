@@ -183,6 +183,10 @@ async fn state_of(name: &str) -> Result<DistroState, ProvisionError> {
 
 /// 幂等供给：已存在 no-op；缺失则按计划执行。
 ///
+/// **调用契约**：单飞——同一时间至多一个 `ensure_present`，并发由调用方
+/// 保证（固定 tar 路径上并发会互相踩踏）。注意 `wsl --export` 可能先终止
+/// 运行中的种子发行版（良性、列表可见的状态变化）。
+///
 /// # Errors
 /// - [`ProvisionError::ListUnavailable`]：无法探测现状；
 /// - [`ProvisionError::StepFailed`]：计划步骤失败（tar 残留会尽力清理）。
@@ -217,7 +221,7 @@ pub async fn ensure_present(input: &ProvisionInput) -> Result<ProvisionOutcome, 
     })
 }
 
-async fn execute(plan: &ProvisionPlan) -> Result<(), ProvisionError> {
+pub(crate) async fn execute(plan: &ProvisionPlan) -> Result<(), ProvisionError> {
     for step in &plan.steps {
         // 一次执行、同次取流（与 health::distro_exec 同款）：wsl.exe 的错误面走
         // stdout 且是 UTF-16——绝不重跑命令取诊断（副作用风险）。
@@ -260,7 +264,7 @@ async fn execute(plan: &ProvisionPlan) -> Result<(), ProvisionError> {
 pub fn default_layout() -> Result<ProvisionInput, ProvisionError> {
     let paths = qn_config::paths::QnPaths::resolve()
         .map_err(|source| ProvisionError::LayoutUnavailable { source })?;
-    let install_dir = paths.root.join("wsl").join(MANAGED_DISTRO_NAME);
+    let install_dir = paths.wsl.join(MANAGED_DISTRO_NAME);
     let tar_path: Utf8PathBuf = std::env::temp_dir()
         .join(format!("{MANAGED_DISTRO_NAME}-seed.tar"))
         .try_into()

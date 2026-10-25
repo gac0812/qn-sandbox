@@ -176,6 +176,7 @@ flowchart LR
 ├── profiles/              # 官方/用户 profile 缓存（来源 registry 或本仓库）
 ├── audit/                 # 审计事件缓存（防篡改源在 nono 侧，此处为呈现副本）
 ├── logs/                  # qnd 滚动日志（tracing json；无凭证）
+├── wsl/                        # 受管发行版 vhdx 落位根（qn-wsl 供给，#85/#188）
 └── cache/                 # nono 安装包/临时文件（可随时清空）
 ```
 
