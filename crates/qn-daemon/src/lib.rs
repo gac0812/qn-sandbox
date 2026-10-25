@@ -8,7 +8,7 @@ use qn_core::native_audit::NativeAuditQuery;
 use qn_core::profile::ProfileRegistry;
 use qn_core::runtime::{RunReport, SessionError, SessionStatus, StopMode, StopReport};
 use qn_core::setup::EngineSetup;
-use qn_core::{ProfileRef, RunSpec, SessionId};
+use qn_core::{RunSpec, SessionId};
 use tokio_util::sync::CancellationToken;
 
 /// Errors raised while composing the local control plane.
@@ -88,7 +88,7 @@ impl ControlPlane {
     /// Preserves unknown, missing and integrity failures.
     pub fn resolve_profile(
         &self,
-        id: ProfileRef,
+        id: qn_core::ProfileRef,
     ) -> Result<qn_core::profile::ResolvedProfile, qn_core::profile::ProfileError> {
         self.profiles.resolve(id)
     }
@@ -198,5 +198,28 @@ mod tests {
             ControlPlane::new(paths).unwrap_or_else(|error| panic!("composition failed: {error}"));
         assert!(plane.paths().root.is_absolute());
         assert!(!plane.list_profiles().unwrap_or_default().is_empty());
+        assert!(
+            plane
+                .resolve_profile(
+                    qn_core::ProfileRef::try_from("qn/claude-code")
+                        .unwrap_or_else(|error| panic!("valid fixture: {error}"))
+                )
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn it_reports_unknown_profiles_without_touching_runtime_state() {
+        let paths = qn_config::paths::QnPaths::from_root("/tmp/qn-daemon-test-unknown");
+        let plane =
+            ControlPlane::new(paths).unwrap_or_else(|error| panic!("composition failed: {error}"));
+        let result = plane.resolve_profile(
+            qn_core::ProfileRef::try_from("qn/unknown")
+                .unwrap_or_else(|error| panic!("valid fixture: {error}")),
+        );
+        assert!(matches!(
+            result,
+            Err(qn_core::profile::ProfileError::UnknownProfile)
+        ));
     }
 }
