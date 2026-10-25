@@ -729,3 +729,94 @@ mod navigation_tests {
         assert_eq!(decoded, navigation);
     }
 }
+
+/// Client boundary for the future daemon-backed desktop shell.
+pub trait ControlPlaneClient {
+    /// Fetches one route snapshot.
+    ///
+    /// # Errors
+    ///
+    /// Returns a classified UI error without raw transport details.
+    fn fetch(&self, route: ViewRoute) -> Result<ViewResult, UiError>;
+    /// Executes a stop effect.
+    ///
+    /// # Errors
+    ///
+    /// Returns a classified UI error without raw transport details.
+    fn stop_session(&self, session: &str) -> Result<(), UiError>;
+    /// Executes a revoke effect.
+    ///
+    /// # Errors
+    ///
+    /// Returns a classified UI error without raw transport details.
+    fn revoke_session(&self, session: &str) -> Result<(), UiError>;
+}
+
+/// Applies one client effect to the pure UI model.
+///
+/// # Errors
+///
+/// Returns the client or model error without exposing transport details.
+pub fn apply_effect_result<C: ControlPlaneClient>(
+    model: &mut UiModel,
+    client: &C,
+    effect: ViewEffect,
+) -> Result<(), UiError> {
+    match effect {
+        ViewEffect::Fetch { route } => model.complete(route, client.fetch(route)?),
+        ViewEffect::StopSession { session } => {
+            client.stop_session(&session)?;
+            model.complete_action()
+        }
+        ViewEffect::RevokeSession { session } => {
+            client.revoke_session(&session)?;
+            model.complete_action()
+        }
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod client_tests {
+    use super::*;
+    struct FakeClient;
+    impl ControlPlaneClient for FakeClient {
+        fn fetch(&self, route: ViewRoute) -> Result<ViewResult, UiError> {
+            Ok(match route {
+                ViewRoute::Profiles => ViewResult::Ready(ViewPayload::Profiles(Vec::new())),
+                ViewRoute::Permissions => ViewResult::Unavailable {
+                    reason: UnavailableReason::NoEvidence,
+                },
+                ViewRoute::Sessions => ViewResult::Ready(ViewPayload::Sessions(Vec::new())),
+                ViewRoute::Audit => ViewResult::Failed {
+                    code: FailureCode::ControlPlaneUnavailable,
+                },
+            })
+        }
+        fn stop_session(&self, _: &str) -> Result<(), UiError> {
+            Ok(())
+        }
+        fn revoke_session(&self, _: &str) -> Result<(), UiError> {
+            Ok(())
+        }
+    }
+    #[test]
+    fn client_effects_complete_fetch_and_actions_without_transport_knowledge() {
+        let client = FakeClient;
+        let mut model = UiModel::default();
+        let fetch = model
+            .dispatch(UiIntent::Refresh {
+                route: ViewRoute::Profiles,
+            })
+            .unwrap();
+        apply_effect_result(&mut model, &client, fetch).unwrap();
+        assert!(matches!(model.snapshot.profiles, ViewState::Ready(_)));
+        let revoke = model
+            .dispatch(UiIntent::RevokeSession {
+                session: "sxn-test".into(),
+            })
+            .unwrap();
+        apply_effect_result(&mut model, &client, revoke).unwrap();
+        assert!(model.pending.is_none());
+    }
+}
