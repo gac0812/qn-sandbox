@@ -1,90 +1,134 @@
+<a id="qn-sandbox"></a>
+
 <div align="center">
 
-<img src="docs/brand/logo-icon.svg" width="128" alt="qn sandbox logo：玻璃屋里的 Agent">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/brand/logo-lockup-dark.svg">
+  <img src="docs/brand/logo-lockup.svg" width="460" alt="qn sandbox — Secure Agent Sandbox">
+</picture>
 
-# qn sandbox
+### 让 Agent 放手干活，让权限留在你手里。
 
-**桌面级 AI 安全沙箱 · Secure Agent Sandbox**
-
-让 Claude Code、Codex、dsh 在内核强制的最小权限里放手干活，钥匙始终在你手里。
-
-<p>
-  <img alt="status" src="https://img.shields.io/badge/status-P0%20%E5%BC%80%E5%8F%91%E4%B8%AD-D97757?style=flat-square">
-  <img alt="platforms" src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20(WSL2)-5B6B7C?style=flat-square">
-  <img alt="security core" src="https://img.shields.io/badge/security%20core-nono-3E9B6F?style=flat-square">
-  <img alt="language" src="https://img.shields.io/badge/built%20with-Rust-B7410E?style=flat-square">
-</p>
-
-<img src="docs/media/intro/preview.webp" width="880" alt="qn sandbox 产品演示：Agent 住进沙箱、越界被拦截、钥匙留在宿主侧">
+桌面级 AI 安全沙箱 · Built on nono
 
 <p>
-  <a href="docs/spec/00-product-scope.md">产品范围</a> ·
-  <a href="docs/spec/01-architecture.md">架构</a> ·
-  <a href="docs/spec/08-security.md">安全</a> ·
-  <a href="docs/dev-notes/macos-demo-runbook.md">macOS 演示流程</a> ·
-  <a href="docs/media/intro/qn-sandbox-intro.mp4">完整视频（含旁白）</a>
+  <img alt="开发状态：P0" src="https://img.shields.io/badge/status-P0_in_development-D97757?style=flat-square">
+  <img alt="安全内核：nono" src="https://img.shields.io/badge/kernel-nono-3E9B6F?style=flat-square">
+  <img alt="使用 Rust 构建" src="https://img.shields.io/badge/built_with-Rust-5B6B7C?style=flat-square">
 </p>
+
+[快速开始](#快速开始) · [进展](#当前进展) · [安全](#设计与安全) · [文档](#开发文档)
 
 </div>
 
----
+## 两分钟，认识 qn sandbox
 
-## 为什么需要它
+https://github.com/user-attachments/assets/9dc8b557-b54c-486e-bfd8-e505e350858a
 
-AI 编码代理（Claude Code、Codex、dsh……）在你的电脑上能读写文件、执行命令、联网。可 SSH 密钥、云账号也躺在同一台机器上：网页里藏一句坏指令，就可能让 Agent 把密钥读走、发出去。
+<p align="center">
+  <sub>02:23 · 中文旁白 · 中英字幕 · 1080p</sub><br>
+  <a href="docs/media/intro/qn-sandbox-intro.srt">字幕文件</a> ·
+  <a href="docs/media/intro/qn-sandbox-intro.mp4">轻量版视频</a> ·
+  <a href="docs/dev-notes/macos-demo-runbook.md">实际演示流程</a>
+</p>
 
-现有的选择要么太重（VM：导镜像、同步文件、启动慢），要么太散（手写 Seatbelt / Landlock 策略），要么和凭证安全冲突（把密钥写进容器配置）。
+> [!NOTE]
+> **当前处于 P0 开发阶段。** 视频展示产品设计，包含尚在开发的桌面面板和一键撤销。当前可演示范围为 macOS CLI 链路；完整凭证代答、MCP 认证传输及跨平台验收进展见下方说明。
 
-**qn sandbox 给 Agent 一间关得住、但待着很舒服的屋子：**
+## 为什么做它
 
-| | |
-| --- | --- |
-| 🔑 **钥匙在屋外** | 真实凭证只在宿主侧。Agent 只拿到短时、受限的句柄（phantom token），由宿主侧代理替它去用 |
-| 🧱 **默认关着门** | 文件和网络默认拒绝，按配置档（profile）放行；越界动作当场拦截 |
-| 🧾 **看得见** | 每次拦截、每次代用都留下用户可读的审计记录 |
-| ✂️ **随时收回** | 一键撤销会话，句柄立即失效 |
-| 🔌 **MCP 也安全** | MCP 配置里只写句柄，密钥由宿主侧网关代答 |
-| 🙌 **零技术配置** | 不用懂 Landlock、Seatbelt 或 WSL2，一条命令或点一下就能跑 |
+Agent 需要读文件、执行命令和联网；你的 SSH 密钥、云账号和工作资料也在同一台电脑上。qn sandbox 的目标，是让 Agent 在明确的权限边界内工作，并把真实凭证留在宿主侧。
 
-## 用起来是什么样
+| 有边界地运行 | 在宿主侧用凭证 | 把证据交给用户 |
+| :--- | :--- | :--- |
+| 复用 nono 的内核级隔离，文件与网络默认拒绝，按 profile 放行。 | Agent 只持有受限句柄，凭证代理与 MCP 网关负责宿主侧代答。 | 呈现会话状态和审计来源，保留未验证、部分记录与清理不确定性。 |
 
-现在已经可以从源码跑通 **macOS 最小演示链路**：安装 → 配置档 → 受限运行 → 审计 → 停止。完整步骤和安全验收清单见 [macOS 最小演示流程](docs/dev-notes/macos-demo-runbook.md)。
+这是产品的设计原则；实际完成范围与验收证据分别列在[当前进展](#当前进展)和[安全演示清单](docs/dev-notes/macos-demo-runbook.md#6-安全验收清单)。
 
-**安装 `qn` 命令行**（目前还没有发布安装包，先从源码装一次，需要 Rust 工具链）：
+## 快速开始
+
+**先准备：** macOS 13+、Rust 工具链，以及已经检出的本仓库。当前从源码安装，还没有正式桌面安装包。
+
+**1 · 安装命令行**
+
+在仓库根目录执行：
 
 ```bash
-cargo install --locked --path crates/qn-cli   # 装好后命令就是 qn
+cargo install --locked --path crates/qn-cli
 qn --version
+qn doctor --config-only
 ```
 
-**之后直接用 `qn`：**
+**2 · 准备引擎与配置档**
+
+先按 [macOS 演示流程](docs/dev-notes/macos-demo-runbook.md#前置条件)准备对应架构的锁定 nono archive、Agent CLI 和专用测试项目，再执行：
 
 ```bash
-# 诊断与安装：校验锁定版本的 nono（archive 完整性 + 版本）
-qn doctor --config-only
 qn install
 qn doctor
-
-# 官方配置档
 qn profile list
 qn profile show qn/claude-code
+```
 
-# 在项目目录里，用官方配置档受限运行 Claude Code
+**3 · 在测试项目中运行**
+
+切换到准备好的测试项目目录：
+
+```bash
 qn run --profile qn/claude-code -- claude
+```
 
-# 会话状态、审计、停止（SESSION_ID 来自 run 的输出）
+首批官方配置档为 [`qn/claude-code`](profiles/claude-code.json) 与 [`qn/codex`](profiles/codex.json)，dsh 在规划中。
+
+<details>
+<summary><strong>查看会话状态、审计记录与停止命令</strong></summary>
+
+将运行输出中的会话 ID 赋给 `SESSION_ID`，再执行：
+
+```bash
 qn status "$SESSION_ID"
 qn audit show "$SESSION_ID"
+qn audit native "$SESSION_ID"
 qn stop "$SESSION_ID"
 ```
 
-> 当前链路尚未覆盖 Windows WSL2、Tauri 安装包、daemon HTTP/RPC、带认证的 MCP 传输和真实 provider 凭证代答（见演示流程 §7）。一键撤销与桌面面板仍在开发中。
+配置诊断成功只代表配置有效；引擎校验成功也不等于完整安全验收。审计的 source / integrity 与 `cleanup: unconfirmed` 必须按实际输出理解。完整步骤见 [macOS 演示流程](docs/dev-notes/macos-demo-runbook.md)。
 
-桌面控制面板将提供 **会话 · 配置档 · 权限 · 审计** 四个视图。官方配置档首批为 [`qn/claude-code`](profiles/claude-code.json) 与 [`qn/codex`](profiles/codex.json)；dsh 在规划中。
+</details>
 
-## 它怎么工作
+## 当前进展
 
-一层一层搭起来：最底下是操作系统内核的隔离能力，开源安全内核 [nono](https://github.com/nolabs-ai/nono) 把墙砌牢，凭证代理和 MCP 网关替 Agent 保管钥匙，最上面是你用的命令行和桌面面板。
+| 范围 | 当前状态 | 入口 |
+| :--- | :--- | :--- |
+| macOS CLI | 安装、profile、前台运行、状态、审计和停止链路可演示；真实 Agent 安全验收仍需按清单执行 | [演示流程](docs/dev-notes/macos-demo-runbook.md) |
+| Windows / WSL2 | 供给适配器持续开发，尚未完成同等端到端验收 | [qn-wsl](crates/qn-wsl/README.md) |
+| 桌面面板、完整凭证代答与 MCP 认证传输 | 仍在开发与联调，视频中的设计不代表已全部交付 | [交付跟踪 #82](https://github.com/gac0812/qn-sandbox/issues/82) |
+
+<details>
+<summary><strong>路线图：从安全路径到 API 与高级隔离</strong></summary>
+
+| 优先级 | 工作包 | 目标 |
+| :--- | :--- | :--- |
+| P0 | M0 · M1 · M2 | macOS 与 Windows 安全路径、官方配置档、最小控制面、审计与攻击演示 |
+| P1 | M3 | 统一 API / SDK、profile 生态、沙箱即 MCP 工具 |
+| P2 | M4 | 可选强隔离 VM、网络策略 UI、资源配额与企业审计 |
+
+详见[产品范围](docs/spec/00-product-scope.md)。macOS 使用 nono / Seatbelt，Windows 路线为 WSL2 / nono / Landlock；VM 是后续可选模式。
+
+</details>
+
+## 设计与安全
+
+**Thin product on [nono](https://github.com/nolabs-ai/nono)。** 内核隔离由 nono 承担，qn 负责适配、配置档、控制面和宿主侧凭证流程；不 fork 安全内核，不实现第二套隔离机制。
+
+- **凭证留在宿主。** 真实凭证不进入沙箱文件系统、环境变量、进程参数或 Agent 上下文；MCP 密钥也不下发。
+- **权限默认拒绝。** 文件与网络按 profile 放行，Agent 仅接触短时、受限作用域的占位符或句柄。
+- **特权动作可审计。** 撤销使句柄与代理访问失效；记录只声称实际观察到的证据，不把不确定性当作成功。
+
+以上是不变式与验收要求，详见[安全规范](docs/spec/08-security.md)。
+
+<details>
+<summary><strong>展开目标架构</strong></summary>
 
 ```mermaid
 flowchart TB
@@ -112,60 +156,21 @@ flowchart TB
     box --- os
 ```
 
-**安全不变式**（每个实现决策都必须守住）：
+分层、依赖方向和当前实现边界见[架构规范](docs/spec/01-architecture.md)与[架构拆分](docs/architecture-breakdown.md)。
 
-- 真实凭证绝不进入沙箱的文件系统、环境变量、进程参数或 Agent 上下文。
-- Agent 只拿到短时、受限作用域的占位符或代理句柄。
-- MCP 凭证在宿主侧注入，永不下发给 Agent。
-- 文件系统与网络权限默认拒绝、按配置档放行。
-- 特权动作产生用户可见的审计事件。
-- 撤销会话即刻使占位符与代理访问失效。
+</details>
 
-## 平台
+## 开发文档
 
-| 平台 | 隔离机制 | 说明 |
-| --- | --- | --- |
-| macOS 13+（Apple Silicon / Intel） | nono · Seatbelt | 宿主直跑，无 VM |
-| Windows 11 / Win10 22H2（含 Home） | qn 供给 WSL2 + nono · Landlock | 发行版安装、内核探测与升级全部自动化 |
-| （P2）强隔离模式 | 独立 VM + guest 内 nono | 面向需要独立内核的合规场景，默认不开 |
+| 想做什么 | 从这里开始 |
+| :--- | :--- |
+| 跑一次真实演示 | [macOS 演示与验收清单](docs/dev-notes/macos-demo-runbook.md) |
+| 理解产品与安全边界 | [产品范围](docs/spec/00-product-scope.md) · [安全规范](docs/spec/08-security.md) |
+| 参与开发 | [贡献指南](CONTRIBUTING.md) · [AI 协作规范](AGENTS.md) · [本地质量门禁](docs/spec/05-testing-quality.md) |
+| 了解设计与实现 | [架构规范](docs/spec/01-architecture.md) · [CLI 文档](crates/qn-cli/README.md) · [术语表](docs/spec/glossary.md) |
 
-## 路线图
-
-| 优先级 | 工作包 | 交付 |
-| --- | --- | --- |
-| **P0** | M0 · M1 · M2 | 安全路径端到端（macOS + Windows）：沙箱适配器、凭证代理、MCP 网关、官方配置档、最小桌面面板、审计与攻击演示 |
-| **P1** | M3 | 统一 API / SDK、配置档注册表、沙箱即 MCP 工具 |
-| **P2** | M4 | 强隔离 VM 模式、网络策略 UI、资源配额、企业审计报表 |
-
-详见 [docs/spec/00-product-scope.md](./docs/spec/00-product-scope.md) §4。
-
-## 仓库结构
-
-```text
-crates/
-├── qn-core        领域模型（Sandbox / Profile / Grant / AuditEvent）与 ports
-├── qn-nono        引擎适配器：nono 安装与版本锁定、拉起、状态与审计采集
-├── qn-broker      凭证代理：phantom token + 上游 allowlist，grant / revoke 生命周期
-├── qn-gateway     MCP 网关：宿主侧代答 MCP 认证，Agent 配置只有句柄
-├── qn-wsl         Windows 供给链路：WSL2 安装、内核探测与升级、nono 引导
-├── qn-daemon      控制面后端：装配适配器、状态与审计查询
-├── qn-cli         qn 命令行（run / exec / status / audit / doctor）
-├── qn-ui          最小 Tauri 壳：配置档 / 权限 / 状态 / 审计
-├── qn-mcp         沙箱即 MCP 工具（M3）
-├── qn-config      配置、路径、平台常量与锁定版本
-├── qn-infra       process / fs / logging / retry 等通用机制
-├── qn-bootstrap   装配根：构造适配器并注入 core
-└── qn-vm          P2 强隔离模式占位
-profiles/          官方配置档（qn/claude-code、qn/codex）与清单
-sdks/              控制面契约（control-plane-v1）与 TypeScript / Python 客户端边界
-tests/             端到端与攻击演示剧本（tests/e2e）
-scripts/           架构依赖检查、本地验证、nono 升级回归
-docs/              产品范围、架构、编码 / 测试 / 安全规范、术语表、演示流程
-```
-
-依赖方向与分层规则见 [docs/spec/01-architecture.md](./docs/spec/01-architecture.md)。
-
-## 文档地图
+<details>
+<summary><strong>全部工程文档</strong></summary>
 
 | 文档 | 内容 | 读者 |
 | --- | --- | --- |
@@ -185,13 +190,13 @@ docs/              产品范围、架构、编码 / 测试 / 安全规范、术�
 | [docs/dev-notes/macos-demo-runbook.md](./docs/dev-notes/macos-demo-runbook.md) | **macOS 最小演示流程**：安装 → 配置档 → 受限运行 → 审计 → 停止，含安全验收清单 | 所有人 |
 | [TODO.md](./TODO.md) | 工程待办：M0 前置 spike、CI 与覆盖率门禁 | 所有人 |
 
-## 参与贡献
+</details>
 
-本仓库为七牛 1024 Hackathon 项目，正在积极开发中，从不可移动的 `v0` 基线起步。分支、Review 与安全规则见 [CONTRIBUTING.md](CONTRIBUTING.md)；AI 协作规则见 [AGENTS.md](AGENTS.md)。
+---
 
-内部赛题材料与本地凭证不属于本仓库，任何真实凭证都不应出现在提交、日志或截图中。
-
-<div align="center">
-<img src="docs/brand/logo-lockup.svg" height="44" alt="qn sandbox"><br/>
-<sub>关得住，也待得舒服。<i>Safe by default. Comfortable by design.</i> · <a href="docs/brand/">品牌素材</a></sub>
-</div>
+<p align="center">
+  <strong>关得住，也待得舒服。</strong><br>
+  <sub>Safe by default. Comfortable by design.</sub><br><br>
+  <a href="CONTRIBUTING.md">参与贡献</a> · <a href="https://github.com/gac0812/qn-sandbox/issues">反馈问题</a> · <a href="docs/brand/">品牌素材</a><br>
+  <sub>七牛 1024 Hackathon 项目 · 积极开发中</sub>
+</p>
