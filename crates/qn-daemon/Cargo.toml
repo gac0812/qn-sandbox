@@ -9,12 +9,14 @@ publish.workspace = true
 qn-bootstrap = { path = "../qn-bootstrap", version = "0.1.0" }
 qn-config = { path = "../qn-config", version = "0.1.0" }
 qn-core = { path = "../qn-core", version = "0.1.0" }
+qn-mcp = { path = "../qn-mcp", version = "0.1.0" }
 thiserror = "2"
 tokio-util = "0.7"
 
 [dev-dependencies]
 camino = "1"
 tempfile = "3"
+serde_json = "1"
 
 [lints]
 workspace = true
