@@ -820,3 +820,678 @@ mod client_tests {
         assert!(model.pending.is_none());
     }
 }
+
+/// Permission state displayed by the Permissions view.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum PermissionState {
+    /// No grant is currently active.
+    None,
+    /// A host-mediated grant is active for one session and scope label.
+    Granted {
+        /// Canonical session reference.
+        session: String,
+        /// Non-secret permission scope label.
+        scope: String,
+    },
+    /// A revoke request has been accepted and is awaiting confirmation.
+    Revoking {
+        /// Canonical session reference.
+        session: String,
+    },
+    /// The broker/gateway capability is unavailable in this product phase.
+    Unavailable {
+        /// Safe unavailable reason.
+        reason: UnavailableReason,
+    },
+}
+
+/// Safe permission view model with no credential values.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct PermissionModel {
+    /// Current permission state.
+    pub state: PermissionState,
+    /// Whether a user can request a grant from this view.
+    pub can_grant: bool,
+    /// Whether a user can request revoke from this view.
+    pub can_revoke: bool,
+}
+
+impl PermissionModel {
+    /// Constructs an unavailable permission model without implying success.
+    #[must_use]
+    pub fn unavailable(reason: UnavailableReason) -> Self {
+        Self {
+            state: PermissionState::Unavailable { reason },
+            can_grant: false,
+            can_revoke: false,
+        }
+    }
+
+    /// Constructs the empty state before a grant is issued.
+    #[must_use]
+    pub fn empty() -> Self {
+        Self {
+            state: PermissionState::None,
+            can_grant: true,
+            can_revoke: false,
+        }
+    }
+
+    /// Applies a host-mediated grant result without accepting credential data.
+    #[must_use]
+    pub fn granted(session: String, scope: String) -> Self {
+        Self {
+            state: PermissionState::Granted { session, scope },
+            can_grant: false,
+            can_revoke: true,
+        }
+    }
+
+    /// Begins a revoke transition for the currently granted session.
+    ///
+    /// Returns `None` when the current state is not an active grant.
+    #[must_use]
+    pub fn begin_revoke(&self) -> Option<Self> {
+        let PermissionState::Granted { session, .. } = &self.state else {
+            return None;
+        };
+        Some(Self {
+            state: PermissionState::Revoking {
+                session: session.clone(),
+            },
+            can_grant: false,
+            can_revoke: false,
+        })
+    }
+
+    /// Completes a revoke transition as an empty state.
+    #[must_use]
+    pub fn complete_revoke(&self) -> Option<Self> {
+        matches!(self.state, PermissionState::Revoking { .. }).then(Self::empty)
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod permission_tests {
+    use super::*;
+
+    #[test]
+    fn permission_model_never_contains_credential_values() {
+        let model = PermissionModel::granted("sxn-demo".into(), "anthropic-api".into());
+        let encoded = serde_json::to_string(&model).unwrap();
+        assert!(encoded.contains("sxn-demo"));
+        assert!(encoded.contains("anthropic-api"));
+        assert!(!encoded.contains("secret"));
+        assert!(!encoded.contains("token"));
+    }
+
+    #[test]
+    fn grant_revoke_state_machine_is_explicit() {
+        let empty = PermissionModel::empty();
+        assert!(empty.begin_revoke().is_none());
+        let granted = PermissionModel::granted("sxn-demo".into(), "scope".into());
+        let revoking = granted.begin_revoke().unwrap();
+        assert!(matches!(revoking.state, PermissionState::Revoking { .. }));
+        assert!(!revoking.can_revoke);
+        let completed = revoking.complete_revoke().unwrap();
+        assert_eq!(completed.state, PermissionState::None);
+        assert!(completed.can_grant);
+    }
+}
+
+/// Safe session action state for the Sessions view.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum SessionActionState {
+    /// A running/starting session can receive a stop request.
+    CanStop,
+    /// The owner has observed exit; stop is no longer offered.
+    Exited,
+    /// The session failed before a stop action was available.
+    Failed,
+    /// The session data is not available to this UI.
+    Unavailable,
+}
+
+/// Safe detailed session view model.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct SessionModel {
+    /// Base session card.
+    pub card: SessionCard,
+    /// Owner-observed end reason, if any.
+    pub end: Option<String>,
+    /// Native process observation, if available.
+    pub native: Option<String>,
+    /// Cleanup proof posture; expected to remain unconfirmed until #93.
+    pub cleanup: String,
+    /// Available primary action.
+    pub action: SessionActionState,
+}
+
+impl SessionModel {
+    /// Builds a session model from safe display fields.
+    #[must_use]
+    pub fn new(card: SessionCard, end: Option<String>, native: Option<String>) -> Self {
+        let action = match card.phase.as_str() {
+            "starting" | "running" => SessionActionState::CanStop,
+            "exited_observed" => SessionActionState::Exited,
+            "failed" => SessionActionState::Failed,
+            _ => SessionActionState::Unavailable,
+        };
+        Self {
+            card,
+            end,
+            native,
+            cleanup: "unconfirmed".into(),
+            action,
+        }
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod session_model_tests {
+    use super::*;
+
+    fn card(phase: &str) -> SessionCard {
+        SessionCard {
+            session: "sxn-preview".into(),
+            profile: "qn/claude-code".into(),
+            phase: phase.into(),
+            cleanup: "unconfirmed".into(),
+        }
+    }
+
+    #[test]
+    fn session_actions_follow_owner_observed_phase() {
+        assert_eq!(
+            SessionModel::new(card("starting"), None, None).action,
+            SessionActionState::CanStop
+        );
+        assert_eq!(
+            SessionModel::new(card("running"), None, Some("running".into())).action,
+            SessionActionState::CanStop
+        );
+        assert_eq!(
+            SessionModel::new(
+                card("exited_observed"),
+                Some("exited".into()),
+                Some("exited".into())
+            )
+            .action,
+            SessionActionState::Exited
+        );
+        assert_eq!(
+            SessionModel::new(card("failed"), None, None).action,
+            SessionActionState::Failed
+        );
+    }
+
+    #[test]
+    fn session_model_keeps_cleanup_unconfirmed() {
+        let model = SessionModel::new(card("running"), None, None);
+        assert_eq!(model.cleanup, "unconfirmed");
+        let encoded = serde_json::to_string(&model).unwrap();
+        assert!(encoded.contains("unconfirmed"));
+        assert!(!encoded.contains("secret"));
+    }
+}
+
+/// Safe audit view model for the desktop shell.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct AuditModel {
+    /// Base audit summary.
+    pub card: AuditCard,
+    /// Whether the UI may present the snapshot as complete.
+    pub completeness: AuditCompleteness,
+    /// Whether the UI may offer refresh/follow actions.
+    pub can_refresh: bool,
+}
+
+/// Completeness posture derived from integrity and journal state.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum AuditCompleteness {
+    /// Evidence is explicitly partial/open or has unverified provenance.
+    Incomplete,
+    /// Evidence has an observed closed boundary but remains unverified.
+    ObservedClosedUnverified,
+}
+
+impl AuditModel {
+    /// Builds a safe audit model without upgrading provenance claims.
+    #[must_use]
+    pub fn new(card: AuditCard) -> Self {
+        let completeness = if card.state == "observed_closed" {
+            AuditCompleteness::ObservedClosedUnverified
+        } else {
+            AuditCompleteness::Incomplete
+        };
+        Self {
+            card,
+            completeness,
+            can_refresh: true,
+        }
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod audit_model_tests {
+    use super::*;
+
+    fn card(state: &str, integrity: &str) -> AuditCard {
+        AuditCard {
+            session: "sxn-preview".into(),
+            source: "broker".into(),
+            integrity: integrity.into(),
+            state: state.into(),
+            event_count: 2,
+        }
+    }
+
+    #[test]
+    fn audit_model_keeps_unverified_partial_state_incomplete() {
+        let model = AuditModel::new(card("partial", "unverified"));
+        assert_eq!(model.completeness, AuditCompleteness::Incomplete);
+        assert!(model.can_refresh);
+    }
+
+    #[test]
+    fn observed_closed_is_distinct_from_authenticated_complete() {
+        let model = AuditModel::new(card("observed_closed", "unverified"));
+        assert_eq!(
+            model.completeness,
+            AuditCompleteness::ObservedClosedUnverified
+        );
+        let encoded = serde_json::to_string(&model).unwrap();
+        assert!(encoded.contains("ObservedClosedUnverified"));
+        assert!(!encoded.contains("authenticated"));
+    }
+}
+
+/// Maps a verified core profile summary into a safe Profiles view card.
+#[must_use]
+pub fn profile_card(summary: &qn_core::profile::ProfileSummary) -> ProfileCard {
+    ProfileCard {
+        id: summary.id().to_string(),
+        version: summary.version().to_string(),
+        source: match summary.source() {
+            qn_core::profile::ProfileSource::Builtin => "builtin".into(),
+            qn_core::profile::ProfileSource::Installed => "installed".into(),
+        },
+    }
+}
+
+/// Maps an owner-observed core session status into a safe Sessions view card.
+#[must_use]
+pub fn session_card(status: &qn_core::runtime::SessionStatus) -> SessionCard {
+    let phase = match status.phase() {
+        qn_core::runtime::RunPhase::Starting => "starting",
+        qn_core::runtime::RunPhase::Running => "running",
+        qn_core::runtime::RunPhase::ExitedObserved => "exited_observed",
+        qn_core::runtime::RunPhase::Failed => "failed",
+    };
+    SessionCard {
+        session: status.session().to_string(),
+        profile: status.profile().to_string(),
+        phase: phase.into(),
+        cleanup: "unconfirmed".into(),
+    }
+}
+
+/// Maps a bounded core audit timeline into a safe Audit view card.
+#[must_use]
+pub fn audit_card(timeline: &qn_core::audit::AuditTimeline) -> AuditCard {
+    let source = match timeline.source {
+        qn_core::audit::AuditSource::Broker => "broker",
+    };
+    let integrity = match timeline.integrity {
+        qn_core::audit::AuditIntegrity::Unverified => "unverified",
+    };
+    let state = match timeline.state {
+        qn_core::audit::JournalState::Empty => "empty",
+        qn_core::audit::JournalState::Open => "open",
+        qn_core::audit::JournalState::Partial => "partial",
+        qn_core::audit::JournalState::ObservedClosed => "observed_closed",
+    };
+    AuditCard {
+        session: timeline.session_id.to_string(),
+        source: source.into(),
+        integrity: integrity.into(),
+        state: state.into(),
+        event_count: timeline.events.len(),
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod mapping_tests {
+    use super::*;
+    use qn_core::{
+        ProfileRef, SessionId,
+        audit::{
+            AuditEvent, AuditEventKind, AuditIntegrity, AuditSource, AuditTimeline, JournalState,
+        },
+        profile::{ProfileSource, ProfileSummary, ProfileVersion},
+        runtime::{RunPhase, SessionStatus},
+    };
+
+    #[test]
+    fn maps_core_profile_summary_without_paths() {
+        let summary = ProfileSummary::new(
+            ProfileRef::try_from("qn/claude-code").unwrap(),
+            ProfileVersion::try_from("1.0.0").unwrap(),
+            ProfileSource::Builtin,
+        );
+        let card = profile_card(&summary);
+        assert_eq!(card.id, "qn/claude-code");
+        assert_eq!(card.source, "builtin");
+    }
+
+    #[test]
+    fn maps_core_session_status_with_unconfirmed_cleanup() {
+        let status = SessionStatus::new(
+            SessionId::new(),
+            ProfileRef::try_from("qn/claude-code").unwrap(),
+            RunPhase::Running,
+            None,
+            None,
+            qn_core::runtime::CleanupOutcome::unconfirmed(),
+            None,
+        );
+        let card = session_card(&status);
+        assert_eq!(card.phase, "running");
+        assert_eq!(card.cleanup, "unconfirmed");
+    }
+
+    #[test]
+    fn maps_core_audit_timeline_with_integrity_and_event_count() {
+        let timeline = AuditTimeline {
+            session_id: SessionId::new(),
+            source: AuditSource::Broker,
+            integrity: AuditIntegrity::Unverified,
+            state: JournalState::Partial,
+            events: vec![AuditEvent {
+                sequence: 1,
+                wall_millis: 0,
+                elapsed_micros: 0,
+                event: AuditEventKind::Denied,
+            }],
+        };
+        let card = audit_card(&timeline);
+        assert_eq!(card.source, "broker");
+        assert_eq!(card.integrity, "unverified");
+        assert_eq!(card.state, "partial");
+        assert_eq!(card.event_count, 1);
+    }
+}
+
+/// Builds a complete UI snapshot from already mapped view states.
+#[must_use]
+pub fn assemble_snapshot(
+    profiles: ViewState<Vec<ProfileCard>>,
+    permissions: ViewState<PermissionPosture>,
+    sessions: ViewState<Vec<SessionCard>>,
+    audit: ViewState<Vec<AuditCard>>,
+) -> ControlPlaneSnapshot {
+    ControlPlaneSnapshot {
+        profiles,
+        permissions,
+        sessions,
+        audit,
+    }
+}
+
+#[cfg(test)]
+mod assembler_tests {
+    use super::*;
+
+    #[test]
+    fn assembler_preserves_each_view_state_without_cross_view_defaults() {
+        let snapshot = assemble_snapshot(
+            ViewState::Loading,
+            ViewState::Unavailable {
+                reason: UnavailableReason::NoEvidence,
+            },
+            ViewState::Ready(vec![]),
+            ViewState::Failed {
+                code: FailureCode::InvalidResponse,
+            },
+        );
+        assert!(matches!(snapshot.profiles, ViewState::Loading));
+        assert!(matches!(
+            snapshot.permissions,
+            ViewState::Unavailable {
+                reason: UnavailableReason::NoEvidence
+            }
+        ));
+        assert!(matches!(snapshot.sessions, ViewState::Ready(_)));
+        assert!(matches!(
+            snapshot.audit,
+            ViewState::Failed {
+                code: FailureCode::InvalidResponse
+            }
+        ));
+    }
+}
+
+/// Validates safe display fields before they enter a desktop snapshot.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SnapshotValidationError {
+    /// A display field is empty or contains a terminal control character.
+    UnsafeDisplayField,
+}
+
+/// Validates a snapshot's user-facing strings without filesystem/network access.
+///
+/// # Errors
+///
+/// Returns [`SnapshotValidationError::UnsafeDisplayField`] for empty or
+/// terminal-control-containing display fields.
+pub fn validate_snapshot(snapshot: &ControlPlaneSnapshot) -> Result<(), SnapshotValidationError> {
+    fn safe(value: &str) -> bool {
+        !value.trim().is_empty() && !value.chars().any(char::is_control)
+    }
+    fn profiles(state: &ViewState<Vec<ProfileCard>>) -> bool {
+        match state {
+            ViewState::Ready(cards) => cards
+                .iter()
+                .all(|c| safe(&c.id) && safe(&c.version) && safe(&c.source)),
+            _ => true,
+        }
+    }
+    fn sessions(state: &ViewState<Vec<SessionCard>>) -> bool {
+        match state {
+            ViewState::Ready(cards) => cards.iter().all(|c| {
+                safe(&c.session) && safe(&c.profile) && safe(&c.phase) && safe(&c.cleanup)
+            }),
+            _ => true,
+        }
+    }
+    fn audits(state: &ViewState<Vec<AuditCard>>) -> bool {
+        match state {
+            ViewState::Ready(cards) => cards.iter().all(|c| {
+                safe(&c.session) && safe(&c.source) && safe(&c.integrity) && safe(&c.state)
+            }),
+            _ => true,
+        }
+    }
+    if profiles(&snapshot.profiles) && sessions(&snapshot.sessions) && audits(&snapshot.audit) {
+        Ok(())
+    } else {
+        Err(SnapshotValidationError::UnsafeDisplayField)
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod validation_tests {
+    use super::*;
+    #[test]
+    fn validation_accepts_preview_presets() {
+        for preset in [
+            PreviewPreset::Ready,
+            PreviewPreset::Degraded,
+            PreviewPreset::Failed,
+        ] {
+            validate_snapshot(&preset.snapshot()).unwrap();
+        }
+    }
+    #[test]
+    fn validation_rejects_control_characters_in_ready_cards() {
+        let snapshot = assemble_snapshot(
+            ViewState::Ready(vec![ProfileCard {
+                id: "qn\nprofile".into(),
+                version: "1.0.0".into(),
+                source: "builtin".into(),
+            }]),
+            ViewState::Unavailable {
+                reason: UnavailableReason::NoEvidence,
+            },
+            ViewState::Unavailable {
+                reason: UnavailableReason::NoEvidence,
+            },
+            ViewState::Unavailable {
+                reason: UnavailableReason::NoEvidence,
+            },
+        );
+        assert_eq!(
+            validate_snapshot(&snapshot),
+            Err(SnapshotValidationError::UnsafeDisplayField)
+        );
+    }
+}
+
+/// Maps a UI intent to the route whose view should be refreshed or updated.
+#[must_use]
+pub fn intent_route(intent: &UiIntent) -> ViewRoute {
+    match intent {
+        UiIntent::Refresh { route } | UiIntent::Retry { route } => *route,
+        UiIntent::StopSession { .. } => ViewRoute::Sessions,
+        UiIntent::RevokeSession { .. } => ViewRoute::Permissions,
+    }
+}
+
+/// Whether an intent is allowed by the current snapshot state.
+#[must_use]
+pub fn intent_allowed(snapshot: &ControlPlaneSnapshot, intent: &UiIntent) -> bool {
+    match intent {
+        UiIntent::Refresh { .. } | UiIntent::Retry { .. } => true,
+        UiIntent::StopSession { .. } => {
+            matches!(&snapshot.sessions, ViewState::Ready(cards) if cards.iter().any(|card| card.phase == "starting" || card.phase == "running"))
+        }
+        UiIntent::RevokeSession { .. } => matches!(
+            &snapshot.permissions,
+            ViewState::Ready(PermissionPosture::HostMediated)
+        ),
+    }
+}
+
+#[cfg(test)]
+mod action_routing_tests {
+    use super::*;
+    #[test]
+    fn actions_route_to_their_own_view_and_respect_posture() {
+        let ready = PreviewPreset::Ready.snapshot();
+        assert_eq!(
+            intent_route(&UiIntent::StopSession {
+                session: "sxn".into()
+            }),
+            ViewRoute::Sessions
+        );
+        assert_eq!(
+            intent_route(&UiIntent::RevokeSession {
+                session: "sxn".into()
+            }),
+            ViewRoute::Permissions
+        );
+        assert!(intent_allowed(
+            &ready,
+            &UiIntent::StopSession {
+                session: "sxn".into()
+            }
+        ));
+        assert!(intent_allowed(
+            &ready,
+            &UiIntent::RevokeSession {
+                session: "sxn".into()
+            }
+        ));
+        let degraded = PreviewPreset::Degraded.snapshot();
+        assert!(!intent_allowed(
+            &degraded,
+            &UiIntent::RevokeSession {
+                session: "sxn".into()
+            }
+        ));
+    }
+}
+
+/// Global safety banner state derived from all view models.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum SafetyBanner {
+    /// All currently available views have safe renderable posture.
+    Clear,
+    /// Some capability is unavailable or control-plane data failed.
+    Attention,
+    /// Audit/session evidence is present but not fully verified or cleaned up.
+    EvidenceUnverified,
+}
+
+/// Computes the global banner without making a readiness claim.
+#[must_use]
+pub fn safety_banner(snapshot: &ControlPlaneSnapshot) -> SafetyBanner {
+    let attention = matches!(
+        snapshot.profiles,
+        ViewState::Failed { .. } | ViewState::Unavailable { .. }
+    ) || matches!(
+        snapshot.permissions,
+        ViewState::Failed { .. } | ViewState::Unavailable { .. }
+    ) || matches!(
+        snapshot.sessions,
+        ViewState::Failed { .. } | ViewState::Unavailable { .. }
+    ) || matches!(
+        snapshot.audit,
+        ViewState::Failed { .. } | ViewState::Unavailable { .. }
+    );
+    if attention {
+        return SafetyBanner::Attention;
+    }
+    if let ViewState::Ready(cards) = &snapshot.audit {
+        if cards
+            .iter()
+            .any(|card| card.integrity != "verified" || card.state != "observed_closed")
+        {
+            return SafetyBanner::EvidenceUnverified;
+        }
+    }
+    if let ViewState::Ready(cards) = &snapshot.sessions {
+        if cards.iter().any(|card| card.cleanup != "confirmed") {
+            return SafetyBanner::EvidenceUnverified;
+        }
+    }
+    SafetyBanner::Clear
+}
+
+#[cfg(test)]
+mod safety_tests {
+    use super::*;
+    #[test]
+    fn safety_banner_prioritizes_unavailable_and_failed_capabilities() {
+        assert_eq!(
+            safety_banner(&PreviewPreset::Degraded.snapshot()),
+            SafetyBanner::Attention
+        );
+        assert_eq!(
+            safety_banner(&PreviewPreset::Failed.snapshot()),
+            SafetyBanner::Attention
+        );
+    }
+    #[test]
+    fn safety_banner_keeps_unverified_evidence_visible() {
+        assert_eq!(
+            safety_banner(&PreviewPreset::Ready.snapshot()),
+            SafetyBanner::EvidenceUnverified
+        );
+    }
+}
