@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "profiles": [
+    {
+      "id": "qn/claude-code",
+      "version": "1.0.0",
+      "nono_asset": "claude-code.json",
+      "app": "claude-code",
+      "state_dir": ".claude"
+    },
+    {
+      "id": "qn/codex",
+      "version": "1.0.0",
+      "nono_asset": "codex.json",
+      "app": "codex",
+      "state_dir": ".codex"
+    }
+  ]
+}

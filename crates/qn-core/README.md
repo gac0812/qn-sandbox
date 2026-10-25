@@ -18,3 +18,8 @@ EngineSetup（#114/#117）由实际 CLI install/doctor 消费者推动；本 PR 
 `McpRouting`（#122 / #123）规划精确 HTTP 路由，供可信宿主组合使用。
 `McpHttpRoute` 不含凭证或 grant，不代表注册/授权；adapter 负责端点语法验证。
 契约源自 #122 已验证的本地 CLI/native 消费者；本切片不包含这些消费者。
+`ProfileRegistry` (#75/#59) carries only closed profile DTOs: a canonical
+`ProfileRef`, strict `MAJOR.MINOR.PATCH` version, source, bounded nono asset text,
+allowlist hosts and one relative app state directory. Core never parses nono policy
+syntax and never accepts a credential value. Install/rollback are local registry
+operations; they do not launch an engine or widen authorization.

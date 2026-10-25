@@ -13,6 +13,10 @@ qn doctor
 qn doctor --json
 qn doctor --config-only
 qn doctor --config-only --json
+qn profile list [--json]
+qn profile show <id> [--json]
+qn profile install <id>
+qn profile rollback <id>
 ```
 
 `qn doctor` resolves `QN_HOME` (falling back to the platform default), loads
@@ -77,3 +81,16 @@ The CLI crate also exposes pure renderers for a validated `qn-core::audit::Audit
 object. They do not read files, query adapters, or invent audit evidence. The actual
 reader and `qn audit` command are separate integration work; a rendered timeline keeps
 `integrity` and incomplete journal states visible.
+## Official profile catalog (#75 / #59)
+
+    qn profile list --json
+    qn profile show qn/claude-code --json
+    qn profile install qn/claude-code
+    qn profile rollback qn/claude-code
+
+`list` includes compiled and installed versions with an explicit `builtin`/`installed`
+source. `show` renders the resolved nono asset, its isolated app state directory and its
+proxy allowlist. `install` copies the compiled version into `QN_HOME/profiles` and selects
+it; `rollback` selects the previous verified version. JSON uses schema_version=1.
+Installed assets are checked against their SHA-256 on every resolve. These commands do not
+start an engine, resolve a credential or prove sandbox/production readiness.

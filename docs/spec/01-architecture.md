@@ -185,6 +185,22 @@ core `McpRouting` 定义宿主路由规划，`qn-gateway::HttpMcpRouting` 实现
 路由只供可信宿主使用，不是 Agent 配置、注册、授权或存活证明；生产注册、stdio、
 OAuth、Windows 和 #93 整树清理仍待完成。按 #14/#47 委托实施，不声明 B/C 个人审批。
 
+### 4.6 官方 profile 与版本化注册表（#75 / #59）
+
+`profiles/` 保存两份版本化 nono profile 资产（`claude-code.json`、`codex.json`）与
+`manifest.json`。资产以 `extends: "default"` 保留强制 deny 组，显式列出 fs 白名单、
+代理 `allow_domain` 与 `network.credentials` 服务名；不授予 Keychain/credential 路径，
+不使用 `allow_domain: ["*"]`，不含任何秘密或宿主路径。
+
+`qn-nono::registry` 在编译期嵌入这两份资产，运行期只接受 manifest 中列出的已知资产名，
+因此不存在任意路径发布入口。宿主注册表位于 `QN_HOME/profiles`：
+`<namespace>/<name>/versions/<version>/` 保存 `profile.json` 与含 SHA-256 的
+`manifest.json`，`current` 选择一个已验证版本。安装对相同字节幂等、对不同字节拒绝，
+回滚只选择上一已验证版本。core `ProfileRegistry` 仅暴露封闭的 summary/resolved DTO
+与类型化错误；`qn-bootstrap` 装配，CLI `qn profile list/show/install/rollback` 呈现。
+这些操作不启动引擎、不解析凭证、不扩大沙箱授权。资产发布不等于在线 Agent 认证 E2E、
+跨平台验收或 #93 整树清理完成。按 #14/#47 委托实施，未声明 B/C 个人审批。
+
 ## 5. 数据流（两个代表场景）
 
 **场景 A：`qn run --agent claude-code`（P0 主路径）**
