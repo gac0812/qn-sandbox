@@ -273,3 +273,41 @@ mod tests {
         assert!(!is_snake_case("session__run"));
     }
 }
+
+#[cfg(test)]
+mod schema_contract_tests {
+    use super::{CredentialPosture, ToolCatalog, ToolName};
+
+    #[test]
+    fn standard_catalog_has_the_c3_consumer_contract() {
+        let catalog = ToolCatalog::standard();
+        assert_eq!(catalog.schema_version, 1);
+        let names: Vec<_> = catalog.tools.iter().map(|tool| tool.name).collect();
+        assert_eq!(
+            names,
+            vec![
+                ToolName::AuditQuery,
+                ToolName::McpRoutePlan,
+                ToolName::ProfileList,
+                ToolName::ProfileShow,
+                ToolName::SessionRun,
+                ToolName::SessionStatus,
+                ToolName::SessionStop,
+            ]
+        );
+        let posture: Vec<_> = catalog
+            .tools
+            .iter()
+            .map(|tool| (tool.name, tool.credential_posture))
+            .collect();
+        assert_eq!(posture[0], (ToolName::AuditQuery, CredentialPosture::None));
+        assert_eq!(
+            posture[1],
+            (ToolName::McpRoutePlan, CredentialPosture::HostMediated)
+        );
+        assert_eq!(
+            posture[4],
+            (ToolName::SessionRun, CredentialPosture::HostMediated)
+        );
+    }
+}
