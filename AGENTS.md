@@ -197,8 +197,12 @@ fs/网络默认拒绝、按 profile 放行；特权动作必须留审计事件�
 ## 8. Git、PR 与提交流程（细则见 06，协作底线见 CONTRIBUTING）
 
 GitHub Issue 是任务的唯一入口，`main` 是唯一集成分支。除仓库初始化外，所有变更
-（代码、文档、配置、生成物）都必须经过分支、PR、人类 Review 和 Squash Merge。
-**AI 不 push `main`、不 approve 自己的 PR、不启用 auto-merge、不自行合并。**
+（代码、文档、配置、生成物）都必须经过分支、PR 和 Squash Merge，Review 按 §8.4 执行。
+**AI 不 push `main`、不 approve 任何 PR、不启用 auto-merge。**
+
+**合并授权（所有者例外）**：仓库所有者 `laitekin` 的 PR 由 AI 直接 Squash Merge，
+不要求额外人类 Approve；其他人的 PR 仍必须由人类合并。该例外不豁免 §8.4 的本地门禁、
+证据要求和合并后验证，也不允许跳过测试、安全检查或 secret scan。
 
 ### 8.1 开工前：Issue 与分支
 
@@ -284,6 +288,7 @@ GitHub Issue 是任务的唯一入口，`main` 是唯一集成分支。除仓库
   当前 GitHub Actions 暂停（#145）期间，PR 必须粘贴本地命令、平台、结果和未覆盖项；
   恢复 CI 前由人类 Reviewer 检查这些证据。恢复后再以远程绿勾为准，不能用手工结果替代已恢复的必需检查。
 - 至少获得 1 名人类 Approve；作者不能作为自己 PR 的唯一 Review。
+  所有者 `laitekin` 的 PR 按 §8 合并授权免 Approve，但 AI 仍不得 approve 任何 PR。
 - 横切线由对应负责人自行认领 Review，不要求 PR 作者邀请：
   nono/上游跟版 → A，安全条款 → B，架构与依赖方向 → C。
 - Review 优先检查：依赖方向与分层 → 安全边界 → 错误与边界 → 测试充分性 → 命名与风格。
@@ -298,7 +303,8 @@ GitHub Issue 是任务的唯一入口，`main` 是唯一集成分支。除仓库
 - 关联 Issue 的验收标准全部满足；
 - PR 与本 Issue 范围一致，无未说明的顺手修改；
 - CI 必需检查全绿，Review conversation 全部 resolved；
-- ≥ 1 名人类 Approve，必要的横切线负责人已 Review；
+- ≥ 1 名人类 Approve，必要的横切线负责人已 Review（所有者 `laitekin` 的 PR 按 §8
+  合并授权免 Approve）；
 - 分支已同步最新 `main`，且没有冲突。
 
 合并规则：
