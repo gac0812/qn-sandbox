@@ -20,7 +20,7 @@
 | 平台 | 机制 | 关键要求（测试必须覆盖） |
 | --- | --- | --- |
 | macOS | nono（Seatbelt） | fs+网络默认拒绝；敏感路径默认阻断；限制不可逆、子进程继承 |
-| Windows | qn-wsl 供给 WSL2 + nono（Landlock） | 同上；**内核 ≥6.7 才有 Landlock 网络限制**，供给链路负责探测/升级并在 doctor 中显示；不达标时明确降级告知（fs-only）而非静默 |
+| Windows | qn-wsl 供给 WSL2 + nono（Landlock） | 同上；**内核 ≥6.7 才有 Landlock 网络限制**，供给链路负责探测/升级并在 doctor 中显示；不达标时明确降级告知（offline-only：空白名单 + fs-only Landlock，#17 裁决）而非静默 |
 | P2 强隔离模式 | 独立 VM + guest 内 nono | 独立内核；面向合规场景；非默认 |
 
 "显式放行白名单"是唯一授权方式：profile 声明 fs 范围、出站域名/L7 规则、凭证绑定；

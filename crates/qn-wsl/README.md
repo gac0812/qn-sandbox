@@ -11,8 +11,9 @@ Windows-only：crate 根整体 cfg 门，Linux/macOS 只编译不执行。
 | `decode` | wsl.exe 双格式输出解码：UI 命令（`--version`/`-l -v`）是 UTF-16LE，发行版内命令是 UTF-8 透传——从 `CmdOutcome::stdout_raw` 取原始字节再解码（不能走 lossy 往返，本地化字符会被 U+FFFD 破坏） | ✅ |
 | `kernel` | `uname -r` 解析（非严格 semver）+ ≥6.7 Landlock 网络下限判定 + ABI floor 映射（[内核文档](https://docs.kernel.org/userspace-api/landlock.html) + spike① 实测校准） | ✅ |
 | `distro` | 受管发行版幂等供给：三态纯函数计划（`plan_provision`）+ 编排执行（`ensure_present`）；种子策略 Ubuntu-24.04，**仅自装种子才 unregister** | ✅ M2（#85） |
-| `bootstrap` / kernel 升级 | 发行版内 nono 引导 / 内核升级 | ⏳ 后续 issue（kernel 等 #17 裁决） |
-: add bootstrap module - in-distro nono via host-side staging)
+| `bootstrap` | 发行版内 nono 引导：宿主侧 `qn_nono::installer` staging（锁版+SHA256+Linux target）→ `/mnt/<盘>` 递入 → `install -m 0755` → 版本复验；快路径=已锁定即返回 | ✅ M2（#126） |
+| `upgrade` | 内核升级闭环（#17 裁决）：`wsl --update` → `wsl --shutdown`（**破坏性，需用户确认**）→ 复验 ≥6.7；update 失败不中断（内核可能已达标，verify 裁决）；失败 → offline-only 降级 + 手动渠道指引 | ✅ M2（#167） |
+| kernel 升级——自编译内核分发 | 兜底路径 | ⏳ 按需 |
 
 ## 关键事实（探测语义依据）
 
@@ -20,6 +21,11 @@ Windows-only：crate 根整体 cfg 门，Linux/macOS 只编译不执行。
 - `wsl -l -v` 的表头与状态词是**本地化**的——名称匹配按首列（兼容 `*` 前缀），不判定运行态。
 - `wsl -d <name>` 会按需 boot 停止状态的发行版（探测不改文件系统，但有此可观测变化）。
 - Landlock 网络限制需内核 ≥6.7（ABI v4）；WSL 3.0.3 自带内核 6.18（ABI 7）——spike① #16。
+
+## 已知限制（upgrade，实测驱动）
+
+- <6.7 → 6.18 的**真实升级链路未在本机实证**（本机已 6.18；计划构造/失败语义有单测，shutdown 前后行为依据微软文档与 spike 渠道矩阵）。
+- `wsl --update` 在"已最新"或 CDN 受限时失败——闭环对此容错（verify 裁决），但**不会假装升级成功**（AlreadySatisfied vs Updated 语义区分）。
 
 ## 供给事实（distro，实测 2026-10-25）
 
@@ -45,4 +51,4 @@ cargo run -p qn-wsl --example dump_probes
 ## 非目标
 
 - doctor 的 CLI/UI 呈现（qn-cli/qn-ui，经 qn-bootstrap 桥接——消费方案在 #44/#66 开工前定）；
-- 发行版内 nono 引导（bootstrap）、内核升级（kernel）——后续 issue；跨平台行为。
+- 自编译内核分发（升级闭环已覆盖官方渠道）；跨平台行为。
