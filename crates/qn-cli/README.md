@@ -19,6 +19,7 @@ qn profile show <id> [--json]
 qn profile install <id>
 qn profile rollback <id>
 qn profile validate <id> [--json]
+qn profile publish --id <id> --version <version> <absolute-asset-path>
 ```
 
 `qn doctor` resolves `QN_HOME` (falling back to the platform default), loads
@@ -106,6 +107,12 @@ start an engine, resolve a credential or prove sandbox/production readiness.
 then runs the pinned `nono profile validate --json --strict` against the resolved asset in
 a private temporary file. It never downloads or repairs. Success means the engine accepted
 the profile syntax and references; it does not start a sandbox or prove runtime behavior.
+
+`qn profile publish` validates an absolute, bounded, regular local asset the same way, then
+installs it as the requested strict version and selects it. Only compiled official
+identities are accepted, so the app state directory stays catalog-owned. The asset
+`meta.version` must equal `--version`; conflicting bytes for an existing version are
+refused. Rollback remains available to the previous verified version.
 
 ## Broker audit commands (#110 / #120)
 

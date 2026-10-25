@@ -132,6 +132,89 @@ fn it_rejects_an_unknown_profile_before_engine_validation() {
     assert!(!stderr.contains("qn install"), "{stderr}");
 }
 
+fn asset(version: &str) -> String {
+    format!(
+        "{{\"meta\":{{\"name\":\"qn-claude-code\",\"version\":\"{version}\"}},\"extends\":\"default\",\"network\":{{\"allow_domain\":[\"api.anthropic.com\"]}}}}"
+    )
+}
+
+#[test]
+fn it_refuses_publication_without_a_verified_engine_and_leaves_the_catalog_unchanged() {
+    let root = tempfile::tempdir().unwrap();
+    let asset_path = root.path().join("claude-1.1.0.json");
+    std::fs::write(&asset_path, asset("1.1.0")).unwrap();
+    let output = run(
+        root.path(),
+        &[
+            "profile",
+            "publish",
+            "--id",
+            "qn/claude-code",
+            "--version",
+            "1.1.0",
+            asset_path.to_str().unwrap(),
+        ],
+    );
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("qn install"), "{stderr}");
+    let listed = run(root.path(), &["profile", "list", "--json"]);
+    let value = json(&listed);
+    assert_eq!(value["profiles"].as_array().unwrap().len(), 2);
+}
+
+#[test]
+fn it_rejects_invalid_publication_input_before_engine_validation() {
+    let root = tempfile::tempdir().unwrap();
+    let asset_path = root.path().join("asset.json");
+    std::fs::write(&asset_path, asset("1.0.0")).unwrap();
+
+    let unknown = run(
+        root.path(),
+        &[
+            "profile",
+            "publish",
+            "--id",
+            "qn/unknown",
+            "--version",
+            "1.0.0",
+            asset_path.to_str().unwrap(),
+        ],
+    );
+    assert_eq!(unknown.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&unknown.stderr).contains("unknown profile"));
+
+    let relative = run(
+        root.path(),
+        &[
+            "profile",
+            "publish",
+            "--id",
+            "qn/claude-code",
+            "--version",
+            "1.0.0",
+            "asset.json",
+        ],
+    );
+    assert_eq!(relative.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&relative.stderr).contains("must be absolute"));
+
+    let version = run(
+        root.path(),
+        &[
+            "profile",
+            "publish",
+            "--id",
+            "qn/claude-code",
+            "--version",
+            "01.0.0",
+            asset_path.to_str().unwrap(),
+        ],
+    );
+    assert_eq!(version.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&version.stderr).contains("invalid profile version"));
+}
+
 #[test]
 fn it_renders_human_readable_catalog_and_asset() {
     let root = tempfile::tempdir().unwrap();

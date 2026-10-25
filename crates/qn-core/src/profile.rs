@@ -258,6 +258,9 @@ pub enum ProfileError {
     /// The registry root is not an absolute path.
     #[error("profile registry root must be absolute; set QN_HOME to a private directory")]
     InvalidRoot,
+    /// A supplied asset path is not absolute.
+    #[error("profile asset path must be absolute; use a path from the trusted host location")]
+    InvalidAssetPath,
     /// An existing version has different bytes.
     #[error("profile version already exists with different content; publish a new version")]
     Conflict,

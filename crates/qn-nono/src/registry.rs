@@ -407,6 +407,37 @@ impl HostProfileRegistry {
         fs::rename(staging.path(), &target).map_err(ProfileError::Io)?;
         Ok(())
     }
+
+    /// Publish a validated asset as a new version of a compiled official profile.
+    ///
+    /// The caller must validate the asset with the pinned engine first. The
+    /// identity and state directory must match the compiled catalog, so callers
+    /// cannot introduce a new app state path. The asset meta version must match
+    /// `version`; conflicting bytes for an existing version are refused.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProfileError`] for an unknown identity, state-dir mismatch,
+    /// malformed asset, version mismatch, conflict or IO failure.
+    pub fn publish_asset(
+        &self,
+        id: ProfileRef,
+        version: ProfileVersion,
+        asset: &str,
+        state_dir: &str,
+    ) -> Result<ProfileSummary, ProfileError> {
+        let known = self.catalog.resolve(&id)?;
+        if known.state_dir() != state_dir {
+            return Err(ProfileError::InvalidCatalog);
+        }
+        let (_, asset_version) = parse_asset(asset)?;
+        if asset_version != version {
+            return Err(ProfileError::InvalidVersion);
+        }
+        self.publish(&id, &version, asset, state_dir)?;
+        Self::write_current(&self.id_dir(&id), &version)?;
+        Ok(ProfileSummary::new(id, version, ProfileSource::Installed))
+    }
 }
 
 impl ProfileRegistry for HostProfileRegistry {

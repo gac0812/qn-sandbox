@@ -210,8 +210,10 @@ name is resolved through a closed match, so no runtime path can select another f
 a SHA-256 digest and one `current` selection. Reads reject symlinks, non-regular files,
 oversized input, non-canonical versions and digest mismatches. Installing identical bytes
 is idempotent; different bytes for the same version are refused; rollback selects the
-previous verified version only. These operations never launch nono, resolve a credential
-or widen a grant. Native validation of both assets uses the pinned binary:
+previous verified version only. `publish_asset` additionally requires a compiled official
+identity and its catalog-owned state directory, parses the asset, and requires the asset
+meta version to match the requested version before publishing. These operations never
+launch nono, resolve a credential or widen a grant. Native validation of both assets uses the pinned binary:
 
     QN_TEST_NONO=/verified/nono cargo test --locked -p qn-nono --lib \
       registry::tests::it_validates_embedded_assets_with_the_pinned_engine -- --ignored
