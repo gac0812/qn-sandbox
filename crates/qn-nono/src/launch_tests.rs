@@ -81,12 +81,30 @@ fn it_refuses_unreserved_names_detached_launches_and_relative_roots() {
         command: vec!["agent".into()],
     };
     let _ = binding.command(&root.join("nono"), args.clone()).unwrap();
+    let port = std::num::NonZeroU16::new(1234).unwrap();
+    let _ = binding
+        .command_with_proxy_port(&root.join("nono"), args.clone(), port)
+        .unwrap();
     let mut wrong = args.clone();
     wrong.name = SessionId::new();
-    assert!(binding.command(&root.join("nono"), wrong).is_err());
+    assert!(binding.command(&root.join("nono"), wrong.clone()).is_err());
+    assert!(
+        binding
+            .command_with_proxy_port(&root.join("nono"), wrong, port)
+            .is_err()
+    );
     let mut detached = args;
     detached.mode = RunMode::Detached;
-    assert!(binding.command(&root.join("nono"), detached).is_err());
+    assert!(
+        binding
+            .command(&root.join("nono"), detached.clone())
+            .is_err()
+    );
+    assert!(
+        binding
+            .command_with_proxy_port(&root.join("nono"), detached, port)
+            .is_err()
+    );
     assert!(LaunchBinding::reserve(Utf8Path::new("relative"), SessionId::new()).is_err());
     assert!(LaunchBinding::reserve(&root.join("missing"), SessionId::new()).is_err());
 }

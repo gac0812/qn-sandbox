@@ -69,13 +69,47 @@ impl LaunchBinding {
     /// # Errors
     /// Rejects another qn name, detached launches and invalid binary/profile/argv paths.
     pub fn command(&self, binary: &Utf8Path, args: RunArgs) -> Result<CmdSpec, NonoError> {
+        self.bound_command(binary, args, None)
+    }
+
+    /// Construct a bound launch using an approved fixed native credential proxy port.
+    /// The host must use the same port in broker-validated Agent configuration;
+    /// this is not port ownership proof. Native bind failure must stop startup.
+    ///
+    /// ```no_run
+    /// # fn example(binding: &qn_nono::launch::LaunchBinding, binary: &camino::Utf8Path,
+    /// # args: qn_nono::RunArgs, port: std::num::NonZeroU16) -> Result<(), qn_nono::NonoError> {
+    /// let command = binding.command_with_proxy_port(binary, args, port)?;
+    /// assert!(command.arg_values().iter().any(|arg| arg == "--proxy-port"));
+    /// # Ok(()) }
+    /// ```
+    /// # Errors
+    /// Preserves every identity, foreground and path check of command.
+    pub fn command_with_proxy_port(
+        &self,
+        binary: &Utf8Path,
+        args: RunArgs,
+        port: std::num::NonZeroU16,
+    ) -> Result<CmdSpec, NonoError> {
+        self.bound_command(binary, args, Some(port))
+    }
+
+    fn bound_command(
+        &self,
+        binary: &Utf8Path,
+        args: RunArgs,
+        port: Option<std::num::NonZeroU16>,
+    ) -> Result<CmdSpec, NonoError> {
         crate::args::validate_path(binary, "launch binary")?;
         if args.name != self.session || args.mode != RunMode::Foreground {
             return Err(NonoError::InvalidArgument {
                 field: "launch binding",
             });
         }
-        let args = NonoArgs::run(args)?;
+        let args = match port {
+            Some(port) => NonoArgs::run_with_proxy_port(args, port)?,
+            None => NonoArgs::run(args)?,
+        };
         Ok(CmdSpec::new(binary.as_str())
             .args(args.as_slice().iter().cloned())
             .env_clear()

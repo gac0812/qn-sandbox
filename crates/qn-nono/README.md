@@ -127,3 +127,20 @@ verify 拒绝观察到的 qn/native 漂移；ID 不是认证、存活证明或�
 bound_launch_probe 示例由宿主测试器在启动前接收关联，再通过有界 stdin 提交合成 child argv；
 仅供测试协调，不是生产 runner。实际 runner/capture 组合在 #92/#107 的本地集成验证，
 依赖的 PR 未合并。默认回归：cargo test --locked -p qn-nono --lib launch::tests。
+
+## 固定原生代理端口（#137 / #136）
+
+NonoArgs::run_with_proxy_port 和 LaunchBinding::command_with_proxy_port 接受
+NonZeroU16；仅在 child 分隔符前增加原生 --proxy-port，保持原有路径/命令校验、
+固定身份和空父环境，不增加网络许可或通用 flags。默认 run 参数保持不变。
+Codex 0.147.0 的 MCP URL 不展开环境变量，因此管理配置须与原生端口一致。
+空闲端口探测不等于所有权；原生绑定失败必须拒绝，不能连接已有服务或自动换端口。
+
+macOS arm64 真机回归（私有测试父目录建议建在 /Users/Shared 下，权限 0700）：
+
+    QN_TEST_NONO=/verified/nono QN_TEST_PROFILE_PARENT=/private/test-parent cargo test --locked -p qn-nono --test proxy_port_contract -- --ignored
+
+测试验证锁版 binary SHA-256、严格 profile、隔离 HOME/XDG、空闲端口下真实 child
+拿到精确代理地址；占用端口时 child sentinel 不存在，已有 listener 和合成上游均
+无连接。provider 固定拒绝且无真实凭证，不调用模型。命令经 infra 限时/限量执行。
+Windows/WSL/Intel 原生行为未验证；#93 全执行树清理、在线 profiles 与生产组合仍独立跟踪。
