@@ -119,3 +119,43 @@ fn it_renders_human_readable_catalog_and_asset() {
     assert!(text.contains("network allowlist: api.openai.com"), "{text}");
     assert!(text.contains("nono profile:"), "{text}");
 }
+
+#[test]
+fn it_advertises_all_profile_operations_in_help() {
+    let output = Command::new(env!("CARGO_BIN_EXE_qn"))
+        .args(["profile", "--help"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let text = String::from_utf8(output.stdout).unwrap();
+    for operation in ["list", "show", "install", "rollback"] {
+        assert!(text.contains(operation), "missing {operation}: {text}");
+    }
+}
+
+#[test]
+fn it_keeps_profile_help_stream_and_exit_contracts() {
+    for operation in ["list", "show", "install", "rollback"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_qn"))
+            .args(["profile", operation, "--help"])
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{operation}: {output:?}");
+        assert!(output.stderr.is_empty(), "{operation}: {output:?}");
+        let text = String::from_utf8(output.stdout).unwrap();
+        assert!(text.contains("Usage:"), "{operation}: {text}");
+    }
+}
+
+#[test]
+fn it_sanitizes_untrusted_profile_parser_arguments() {
+    let output = Command::new(env!("CARGO_BIN_EXE_qn"))
+        .args(["profile", "show", "bad\nprofile\u{202e}"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(!stderr.contains("\nprofile"));
+    assert!(!stderr.contains('\u{202e}'));
+    assert!(stderr.contains("invalid profile reference"), "{stderr}");
+}
