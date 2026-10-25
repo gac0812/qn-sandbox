@@ -712,6 +712,14 @@ dependencies = [
 [[package]]
 name = "qn-broker"
 version = "0.1.0"
+dependencies = [
+ "camino",
+ "qn-core",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+]
 
 [[package]]
 name = "qn-cli"
