@@ -340,7 +340,7 @@ fn is_complete(candidate: &str, dots: usize) -> bool {
 /// `wsl -l -v` 输出中按**名称列**（每行首列，兼容默认发行版的 `*` 前缀标记）
 /// 匹配发行版名——防 `qn-sandbox-dev` 类前缀误报；表头/状态词本地化不影响
 /// 首列 ASCII 标识符。
-fn list_has_distro(text: &str, name: &str) -> bool {
+pub(crate) fn list_has_distro(text: &str, name: &str) -> bool {
     text.lines().any(|line| {
         let mut tokens = line.split_whitespace();
         match tokens.next() {

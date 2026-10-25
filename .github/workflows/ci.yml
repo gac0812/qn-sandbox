@@ -73,6 +73,50 @@ jobs:
       - name: Run tests
         run: cargo test --locked --workspace
 
+  doc:
+    name: doc (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+    env:
+      RUSTDOCFLAGS: "-D warnings"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        run: rustup toolchain install 1.85.0 --profile minimal
+
+      - name: Build strict workspace documentation
+        run: cargo doc --locked --workspace --no-deps
+
+  architecture:
+    name: architecture
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        run: rustup toolchain install 1.85.0 --profile minimal
+
+      - name: Test architecture checker
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
+
+      - name: Check workspace dependency layers
+        run: python3 scripts/check_architecture.py
+
   deny:
     name: cargo-deny
     runs-on: ubuntu-latest

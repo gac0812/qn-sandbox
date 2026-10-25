@@ -194,6 +194,15 @@ async fn verify(binary: Utf8PathBuf) -> Result<(), Box<dyn Error>> {
             .await
             .is_err()
     );
+    verify_query_failures(&reader, &root).await?;
+    verify_invalid_setup(binary, root).await?;
+    Ok(())
+}
+
+async fn verify_query_failures(
+    reader: &AuditReader,
+    root: &Utf8PathBuf,
+) -> Result<(), Box<dyn Error>> {
     fs::write(root.join("mode"), "fail")?;
     assert!(matches!(
         reader.list().await,
@@ -214,6 +223,13 @@ async fn verify(binary: Utf8PathBuf) -> Result<(), Box<dyn Error>> {
         reader.list().await,
         Err(NonoError::CommandTimedOut { .. })
     ));
+    Ok(())
+}
+
+async fn verify_invalid_setup(
+    binary: Utf8PathBuf,
+    root: Utf8PathBuf,
+) -> Result<(), Box<dyn Error>> {
     assert!(AuditReader::new(binary.clone(), "relative".into(), Arc::new(QueryPolicy)).is_err());
     assert!(
         AuditReader::new(

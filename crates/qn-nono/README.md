@@ -14,7 +14,7 @@
 | `audit::AuditReader` | 隔离 HOME/XDG、锁版探测、受管执行的 typed audit list/show | #68（原生记录，不等于完整 AuditEvent） |
 | `version` | 显式绝对路径调用 `nono --version`，锁版比对、5 秒超时、单流 1 KiB 输出上限 | A-0.5 首片（#41） |
 | `runner` | 经 `qn-infra::process`（#19）调用 nono CLI + 契约测试 | M1（未开始） |
-| `profile_gen` | core Profile → nono profile JSON | M1（未开始） |
+| `profile::PreparedProfile` | 私有运行目录、物理路径重叠检查、离线 profile 渲染与命令构造 | #75 / #77（在线绑定待 broker） |
 | `audit_tail` / `why` | 审计流采集、拒绝原因透传 | M1（未开始） |
 
 ## 安全红线
@@ -52,6 +52,15 @@
 - 上游 `SHA256SUMS.txt` 是哈希清单而非签名；签名校验方案在 08 落地时评估。
 - 宿主下载通过 ureq 读取代理环境配置（#60），仅接受 HTTPS 请求/重定向；归档仍须匹配
   锁版 SHA-256。代理配置只用于宿主下载，不写入 profile 或传给 nono 子进程。
+
+## 只读安装校验（#115）
+
+`installer::verify_installation(&InstallOptions)` 复用锁版 manifest/归档校验/提取，
+再比较已装普通文件与归档二进制的字节；缺失、symlink、非普通文件、损坏和差异均拒绝。
+不下载、执行、修复或修改受管根；仅在根外私有临时目录提取并自动清理。
+宿主根必须可信，不抵御校验后同权限并发替换。同步磁盘 IO 无取消/截止时间承诺，
+异步使用方应置于 blocking worker 并负责生命周期。完整性不等于版本或隔离就绪。
+#114 的实际 install/doctor 消费者已在本地集成验证，尚未随此独立 PR 发布。
 
 ## 版本契约测试
 
@@ -111,6 +120,12 @@ root 布局与 #46 探测一致（home/config/state/cache/tmp），须为受管�
 默认 Debug/错误不回显载荷。DTO 仅呈现原生记录，不证明来源完整/可信，不推断 filesystem Denial，
 也不表示 #66 的统一事件查询或攻击 U8 已验收。schema 样本见 `tests/fixtures/nono-0.80.0/audit-*.json`。
 
+`PreparedProfile::prepare` 是阻塞准备步骤，异步调用方放入 `spawn_blocking`；`RuntimePaths` 必须来自可信装配层，
+包含实际宿主 home、控制目录、已校验引擎及工具 PATH。工作目录不能覆盖这些位置、控制程序或保护路径（含 .netrc/.kube/.docker）。
+生成策略仅支持两个官方引用的离线基线：网络阻断、禁用能力提升、无 hooks/明文凭证/bypass。
+带 grant 请求直接拒绝，不能当作在线官方 profile 已完成。调用方保留准备对象直到执行结束，
+或显式 `persist` 将审计目录交给注册表管理。Linux 的安全性不依赖 deny-within-allow；原生 canary 验收由 #75 跟踪。
+
 真实只读 smoke：`QN_TEST_NONO=/verified/nono QN_TEST_ROOT=/isolated/probe-root cargo test --locked -p qn-nono --test audit_reader -- --native`
 （只使用含合成审计记录的隔离根；默认不带 `--native` 时跑 Rust 子进程回归）。
 
@@ -130,3 +145,34 @@ root 对沙箱不可见且每次启动唯一；`None` 也不证明进程退出�
 `cargo test --locked -p qn-nono --test audit_reader -- --native-session`。
 测试不负责启动/清理；只允许专用临时根，不得指向用户状态。2026-10-25 macOS 实测
 8 秒前台 sleep：一个 Running 记录、find/inspect 成功、前台自然退出 0；不代表 Agent E2E。
+
+## 启动前身份预留（#108）
+
+LaunchBinding 在可信私有控制根中通过 create_new 原子预留 qn ID，使用 OS 随机数生成完整
+native ID。预留文件在释放句柄、启动失败后仍保留；不得删除后重试同一 ID。不同控制根是
+不同命名空间，装配层必须统一选择；目录项的崩溃持久化与保留清理由拥有者负责。
+command 只允许相同 qn ID 的前台启动，清空父环境并设置 nono 0.80.0 私有启动身份变量；
+调用方负责二进制完整性/版本、profile 校验、可信环境和唯一进程句柄。该变量由上游过滤，
+不进入沙箱环境；此行为来自 launch_runtime / proxy_runtime / exec_strategy 并须原生回归。
+verify 拒绝观察到的 qn/native 漂移；ID 不是认证、存活证明或后代清理证明（#93）。
+
+bound_launch_probe 示例由宿主测试器在启动前接收关联，再通过有界 stdin 提交合成 child argv；
+仅供测试协调，不是生产 runner。实际 runner/capture 组合在 #92/#107 的本地集成验证，
+依赖的 PR 未合并。默认回归：cargo test --locked -p qn-nono --lib launch::tests。
+
+## 固定原生代理端口（#137 / #136）
+
+NonoArgs::run_with_proxy_port 和 LaunchBinding::command_with_proxy_port 接受
+NonZeroU16；仅在 child 分隔符前增加原生 --proxy-port，保持原有路径/命令校验、
+固定身份和空父环境，不增加网络许可或通用 flags。默认 run 参数保持不变。
+Codex 0.147.0 的 MCP URL 不展开环境变量，因此管理配置须与原生端口一致。
+空闲端口探测不等于所有权；原生绑定失败必须拒绝，不能连接已有服务或自动换端口。
+
+macOS arm64 真机回归（私有测试父目录建议建在 /Users/Shared 下，权限 0700）：
+
+    QN_TEST_NONO=/verified/nono QN_TEST_PROFILE_PARENT=/private/test-parent cargo test --locked -p qn-nono --test proxy_port_contract -- --ignored
+
+测试验证锁版 binary SHA-256、严格 profile、隔离 HOME/XDG、空闲端口下真实 child
+拿到精确代理地址；占用端口时 child sentinel 不存在，已有 listener 和合成上游均
+无连接。provider 固定拒绝且无真实凭证，不调用模型。命令经 infra 限时/限量执行。
+Windows/WSL/Intel 原生行为未验证；#93 全执行树清理、在线 profiles 与生产组合仍独立跟踪。
