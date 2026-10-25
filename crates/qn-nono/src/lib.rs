@@ -30,6 +30,7 @@ pub mod error;
 pub mod installer;
 pub mod launch;
 pub mod manifest;
+pub mod native_audit;
 pub mod profile;
 pub mod registry;
 pub mod session;

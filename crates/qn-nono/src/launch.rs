@@ -19,6 +19,19 @@ pub struct LaunchBinding {
 }
 
 impl LaunchBinding {
+    /// Publish a no-replace query association before spawn in a trusted audit directory.
+    /// Call through a blocking task. Roots must remain outside all sandbox grants.
+    /// The host owns directory durability/retention; this grants no lifecycle authority.
+    /// # Errors
+    /// Refuses duplicate records, invalid roots and write/sync failures.
+    pub fn publish_audit(
+        &self,
+        audit_root: &Utf8Path,
+        runtime_root: &Utf8Path,
+    ) -> Result<(), NonoError> {
+        crate::native_audit::association::publish(audit_root, runtime_root, self)
+    }
+
     /// Reserve in an existing trusted, private control directory outside sandbox grants.
     /// Call through a blocking task. All launches must use the same control namespace.
     /// The no-replace file survives Drop and all later launch failures; never delete

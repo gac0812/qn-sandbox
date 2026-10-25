@@ -190,6 +190,17 @@ core `McpRouting` 定义宿主路由规划，`qn-gateway::HttpMcpRouting` 实现
 路由只供可信宿主使用，不是 Agent 配置、注册、授权或存活证明；生产注册、stdio、
 OAuth、Windows 和 #93 整树清理仍待完成。按 #14/#47 委托实施，不声明 B/C 个人审批。
 
+### 4.5 原生审计消费者（#121）
+
+NativeAuditQuery 单独承载 native network-only report；不向 broker 单调时钟投影。
+启动前 LaunchBinding 发布不可覆盖的 qn/native/runtime 关联；关联仅用于查询，不授予
+进程或授权能力。读取严格限长、拒绝非普通文件、错会话及非规范 native ID/runtime 路径。
+先校验安装完整性再复用 AuditReader 执行；只输出封闭 decision、原序号、可选 wall time、
+原生总数/exit_code，省略可能携带秘密的 target/path/reason/command。
+CLI audit native 通过 bootstrap 消费；JSON schema_version=1/report，source=nono_audit、
+integrity=unverified、coverage=network_only。宿主目录可信前提、目录持久化责任、#93 整树
+清理限制保持不变。按 #14/#47 委托实施，未声明 B/C 个人审批。
+
 ### 4.6 官方 profile 与版本化注册表（#75 / #59）
 
 `profiles/` 保存两份版本化 nono profile 资产（`claude-code.json`、`codex.json`）与

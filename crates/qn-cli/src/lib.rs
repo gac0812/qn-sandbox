@@ -57,6 +57,9 @@ pub enum Command {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
+    /// Retained native evidence could not be queried safely.
+    #[error(transparent)]
+    NativeAudit(#[from] qn_core::native_audit::NativeAuditError),
     /// Engine installation or read-only integrity/version inspection failed.
     #[error(transparent)]
     Setup(#[from] qn_core::setup::SetupError),

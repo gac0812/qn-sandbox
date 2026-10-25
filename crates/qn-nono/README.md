@@ -226,3 +226,22 @@ worker is awaited; dropping the future cannot promise cancellation of filesystem
 Original errors are retained privately behind redacted formatting/source chains.
 No PATH lookup, package/version change or sandbox-readiness claim. Native Windows setup
 returns Unsupported pending WSL composition. Bootstrap/CLI wiring remains in #114.
+
+## Retained native audit (#121)
+
+LaunchBinding::publish_audit stores an exclusive bounded qn/native/runtime association
+before spawn. ManagedNativeAudit loads only the canonical qn session mapping, verifies
+the installed binary before executing, then queries the exact native record with the
+existing AuditReader. Mapping is retained after owner exit and grants no process authority.
+Projection emits closed network decisions, optional wall times, native order and counts;
+raw paths/targets/reasons/command text are withheld. Integrity stays unverified and
+coverage stays network_only. Missing/invalid associations are errors, not empty reports.
+Host roots must remain private and trusted; no same-user tamper authentication claim.
+
+    cargo build --locked -p qn-cli
+    cargo build --locked -p qn-nono --example bound_launch_probe
+    python3 tests/e2e/macos/native_audit.py --workspace . --archive /verified/nono.tar.gz
+
+This macOS arm64 fixture checks actual native network denial, retained identity, mismatched
+mapping rejection and tampered-binary refusal before execution, then offline repair.
+It does not prove filesystem-denial ingestion, complete process cleanup or Agent E2E.
