@@ -15,6 +15,7 @@ Sandbox/Session/Profile 等领域词汇。
 
 - 任何外部二进制（nono、wsl.exe…）的调用**只**经 `process::run*`（AGENTS R1、spec 08 §5）。
 - `CmdSpec` 是 argv 数组 builder，无隐式 shell 解释入口；默认超时 120s、单流捕获 1 MiB。
+- `CmdOutcome` 同时提供 lossy 字符串与 `stdout_raw`/`stderr_raw` 原始字节——非 UTF-8 输出（如 wsl.exe 的 UTF-16）必须走原始字节自行解码。
 - 需要取消传 `CancellationToken`；需要"必须成功"语义用 `run_checked`（非零码 → `Error::Failed`）。
 - stdout/stderr 摘要会进 debug 级 tracing——输出可能含敏感内容的调用方须知此行为（08 §7）。
 - `env_clear()` 清除环境继承及此前显式设置；之后用 `env()` 重建白名单。`env_remove()`
