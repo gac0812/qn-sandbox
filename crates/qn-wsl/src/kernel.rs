@@ -78,7 +78,7 @@ impl KernelVersion {
     }
 
     /// Landlock ABI floor：该内核修订线保证的最低 ABI 版本（0 = 不支持）。
-    /// 依据：https://docs.kernel.org/userspace-api/landlock.html 的 ABI 版本表
+    /// 依据：<https://docs.kernel.org/userspace-api/landlock.html> 的 ABI 版本表
     /// （v1=5.13 … v4=6.7 引入网络 access rights），6.18→7 由 spike① 探针实测校准；
     /// 主版本 ≥7 按已知最高 floor 取值（未来内核只增不减）。
     #[must_use]
