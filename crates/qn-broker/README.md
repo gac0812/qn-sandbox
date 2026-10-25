@@ -58,7 +58,8 @@ Real Codex app-server JSON/SSE list/call/revoke and occupied-port refusal passed
 in the local #136 integration, with no model call or real user authentication.
 Fresh state is provisioned separately: only tmp/.tmp, the individual installation_id
 and a separate SQLite directory were writable; host configuration is not imported.
-Native fixture/service publication, production profiles and #93 remain independent.
+Native fixture/service publication and production profiles remain independent.
+Session tree cleanup is now proved by the qn-bootstrap reaper (01 §4.7).
 
 ## Scoped grant lifecycle (#79)
 
@@ -85,7 +86,8 @@ Native fixture/service publication, production profiles and #93 remain independe
 - `CaptureBytes`/binding 的 Debug 脱敏，内存 drop 时清零；调用方不得日志化原始载荷或 serde 错误。
 - `cargo test -p qn-broker` 覆盖认证、加密帧界限、超时及关闭；relay/原生重放由 #96 后续测试交付。
 - 尚未接入生产 runner/CLI、持久 provider、审计或 WSL 桥；本机同用户未受限恶意进程不在此传输隔离保证内。
-- 原生撤销验证复用 #80 的授权表在隔离集成工作区执行；#93 的完整进程树清理仍未解决。
+- 原生撤销验证复用 #80 的授权表在隔离集成工作区执行；会话树清理由 qn-bootstrap 的 reaper
+  在 `qn run/stop` 收尾时证明（01 §4.7），本模块自身的 provider 子进程仍按 ProcessPolicy 处理。
 
 ## Trusted host provider (#101)
 
@@ -99,7 +101,8 @@ Native fixture/service publication, production profiles and #93 remain independe
 - Debug、错误和进程日志不包含输出。返回 `ProviderSecret` 使用 zeroize；infra 原有原始/lossy 输出副本
   仍为普通内存，不声称完整内存清零。只允许通过加密宿主通道送回 nono，绝不交给 Agent。
 - 调用者在 provider IO 前验证 grant，交付前再次准入；此模块不负责路由授权、原生会话关联或持久审计。
-- bootstrap 注入现有 ProcessPolicy；#93 全树清理限制仍然存在，命令结束不代表沙箱会话已停止。
+- bootstrap 注入现有 ProcessPolicy；命令结束仍不代表沙箱会话已停止，会话级清理由
+  `qn run/stop` 的 reaper 收尾证明（01 §4.7）。
 
 `cargo test -p qn-bootstrap --test host_provider` 启动真实子进程，使用合成凭证验证环境隔离、输出拒绝、
 超时、事件触发取消和 tracing 脱敏；不读取开发者凭证。Windows 原生结果需单独验证。
@@ -117,7 +120,7 @@ Native fixture/service publication, production profiles and #93 remain independe
 - schema 依据锁版 proxy_runtime.rs；request_host/cache_scope 的 route 值已经 #99 原生重放验证。
 
 `cargo test -p qn-broker` 覆盖绑定、完整 schema、重复键、控制字符、超长输入与错误脱敏。
-生产 serving、启动身份关联、持久审计和 Windows 原生验证仍需集成；#93 全树清理限制不变。
+生产 serving、启动身份关联、持久审计和 Windows 原生验证仍需集成；会话级清理见 01 §4.7。
 
 ## Durable broker audit (#105)
 
@@ -138,7 +141,8 @@ composition are pending; passing journal tests is not full Agent/Windows/securit
 AuditedGrant::issue returns only after GrantIssued is durable; revoke invalidates before
 journal IO and acknowledges GrantRevoked once. Failed/cancelled creation releases capacity;
 last-owner Drop invalidates without claiming durable evidence. Journal lock wait: 30 seconds.
-Pending: service #107, query projection #119, native attack acceptance and tree cleanup #93.
+Pending: service #107, query projection #119 and native attack acceptance. Session
+tree cleanup is provided by the qn-bootstrap reaper (01 §4.7).
 
 ## Owned capture serving (#107)
 
@@ -148,7 +152,8 @@ CaptureService owns the listener and audited grant; cancel and await run to clos
 listener, invalidate authority, await provider cleanup and record closure. Invalid peers
 and recoverable provider failures are audited; audit or registry uncertainty stops serving.
 Already admitted replies may finish after revoke. Neither service success nor Drop proves
-sandbox process-tree cleanup (#93). Native proxy injection remains exclusively nono-owned.
+sandbox process-tree cleanup; the session reaper in 01 §4.7 owns that proof. Native proxy
+injection remains exclusively nono-owned.
 Run cargo test -p qn-bootstrap --test capture_service for ten real child/socket scenarios.
 ## Broker audit query (#110 / #119)
 

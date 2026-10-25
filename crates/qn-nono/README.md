@@ -241,10 +241,16 @@ interactive Agent.
 
 The runner never maps a parent exit, a successful native `stop`, a missing `ps`
 record or a closed stdio stream to confirmed cleanup. `stop` is delegated to the
-pinned engine by the predetermined native ID, never a numeric PID/PGID. Escaped or
-stdio-closed descendants may survive after the supervisor exits; this is the
-explicit #93 limitation and is why no production `Stopped`/stop-success state is
-activated.
+pinned engine by the predetermined native ID, never a numeric PID/PGID.
+`cleanup_markers` exposes the same session-private HOME/XDG/TMPDIR entries that
+`apply_environment` installs. The official profiles list all of them in
+`environment.allow_vars`, so nono 0.80.0 forwards them to the sandboxed child
+(verified by running `/usr/bin/env` under `profiles/claude-code.json`), which lets
+the qn-bootstrap session reaper identify descendants across `setsid` and
+reparenting. The reaper's proof covers observed descendants and marker carriers;
+a process that clears the inherited environment and detaches before first
+observation remains outside the #93 proof and needs a kernel boundary (VM or
+upstream supervisor).
 
 ## Retained native audit (#121)
 

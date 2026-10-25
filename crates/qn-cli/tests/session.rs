@@ -148,7 +148,7 @@ fn wait_for_running_record(root: &Path) -> String {
 
 #[test]
 #[ignore = "requires QN_TEST_NONO_ARCHIVE pointing at the pinned arm64 macOS archive"]
-fn it_runs_echo_under_the_official_profile_and_reports_unconfirmed_cleanup() {
+fn it_runs_echo_under_the_official_profile_and_confirms_cleanup() {
     let Some(root) = installed_home() else {
         return;
     };
@@ -172,7 +172,7 @@ fn it_runs_echo_under_the_official_profile_and_reports_unconfirmed_cleanup() {
         "run failed\nstdout={stdout}\nstderr={}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(stdout.contains("cleanup: unconfirmed"), "{stdout}");
+    assert!(stdout.contains("cleanup: confirmed"), "{stdout}");
     let id = stdout
         .lines()
         .find_map(|line| line.strip_prefix("session: "))
@@ -182,17 +182,19 @@ fn it_runs_echo_under_the_official_profile_and_reports_unconfirmed_cleanup() {
     assert!(status.status.success(), "{status:?}");
     let text = String::from_utf8_lossy(&status.stdout);
     assert!(text.contains("phase: exited_observed"), "{text}");
-    assert!(text.contains("cleanup: unconfirmed"), "{text}");
+    assert!(text.contains("cleanup: confirmed"), "{text}");
     assert!(text.contains("native: exited"), "{text}");
 
     let stop = run(root.path(), &["stop", id]);
-    assert_eq!(stop.status.code(), Some(1));
-    assert!(String::from_utf8_lossy(&stop.stderr).contains("already observed exited"));
+    assert!(stop.status.success(), "{stop:?}");
+    let text = String::from_utf8_lossy(&stop.stdout);
+    assert!(text.contains("stop requested: false"), "{text}");
+    assert!(text.contains("cleanup: confirmed"), "{text}");
 }
 
 #[test]
 #[ignore = "requires QN_TEST_NONO_ARCHIVE pointing at the pinned arm64 macOS archive"]
-fn it_stops_a_running_session_without_claiming_cleanup() {
+fn it_stops_a_running_session_and_confirms_cleanup() {
     let Some(root) = installed_home() else {
         return;
     };
@@ -222,7 +224,7 @@ fn it_stops_a_running_session_without_claiming_cleanup() {
     assert!(stop.status.success(), "stop failed: {stop:?}");
     let text = String::from_utf8_lossy(&stop.stdout);
     assert!(text.contains("stop requested: true"), "{text}");
-    assert!(text.contains("cleanup: unconfirmed"), "{text}");
+    assert!(text.contains("cleanup: confirmed"), "{text}");
 
     let exit = child.wait().unwrap();
     assert!(exit.success(), "run process should exit cleanly: {exit:?}");
@@ -234,7 +236,78 @@ fn it_stops_a_running_session_without_claiming_cleanup() {
     let status = run(root.path(), &["status", &id]);
     let text = String::from_utf8_lossy(&status.stdout);
     assert!(text.contains("phase: exited_observed"), "{text}");
-    assert!(text.contains("cleanup: unconfirmed"), "{text}");
+    assert!(text.contains("cleanup: confirmed"), "{text}");
+}
+
+/// #83 witness: a descendant that calls `setsid`, closes stdio and outlives the
+/// managed parent must still be terminated by the session reaper.
+#[test]
+#[ignore = "requires QN_TEST_NONO_ARCHIVE pointing at the pinned arm64 macOS archive"]
+fn it_reaps_a_detached_descendant_that_outlives_the_parent() {
+    const DETACH: &str = r"
+import os, signal, sys, time, pathlib
+pidfile = pathlib.Path(sys.argv[1])
+for s in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+    signal.signal(s, signal.SIG_IGN)
+pid = os.fork()
+if pid > 0:
+    deadline = time.time() + 5
+    while not pidfile.exists() and time.time() < deadline:
+        time.sleep(0.02)
+    os._exit(0)
+os.setsid()
+os.close(0)
+os.close(1)
+os.close(2)
+pidfile.write_text(str(os.getpid()))
+while True:
+    time.sleep(0.1)
+";
+    let Some(root) = installed_home() else {
+        return;
+    };
+    let project = shared_temp("qn-session-project-");
+    let pidfile = project.path().join("detached.pid");
+    let output = run_in(
+        root.path(),
+        project.path(),
+        &[
+            "run",
+            "--profile",
+            "qn/claude-code",
+            "--",
+            "/usr/bin/python3",
+            "-c",
+            DETACH,
+            pidfile.to_str().expect("utf-8 pidfile"),
+        ],
+    );
+    assert!(output.status.success(), "{output:?}");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("cleanup: confirmed"), "{stdout}");
+
+    let pid: u32 = std::fs::read_to_string(&pidfile)
+        .expect("detached witness pid file")
+        .trim()
+        .parse()
+        .expect("numeric pid");
+    // `kill -0` proves only liveness; the survivor must be gone, not merely
+    // unreachable from the sandbox.
+    let probe = Command::new("/bin/kill")
+        .arg("-0")
+        .arg(pid.to_string())
+        .output()
+        .expect("probe detached witness");
+    if probe.status.success() {
+        let _ = Command::new("/bin/kill")
+            .arg("-9")
+            .arg(pid.to_string())
+            .status();
+    }
+    assert!(
+        !probe.status.success(),
+        "detached witness {pid} survived the session reaper"
+    );
 }
 
 #[test]

@@ -14,5 +14,10 @@ native_audit_query 通过 core NativeAuditQuery 暴露 retained qn/native 关联
 `run_session` / `status_session` / `stop_session` 组合托管引擎、已解析 profile、
 `LaunchBinding` 与受管前台进程。run 在私有 `QN_HOME/runtime/<session>` 写入官方资产、
 发布审计关联并继承终端；status 读取 owner 记录并可选查询原生 `ps --all`；stop 只按记录中的
-预定 native ID 调用锁版 `nono stop`。三者都返回 `cleanup=unconfirmed`，不把父进程退出、
-`ps` 消失或 stop 返回 0 映射为 `Stopped`（#93）。
+预定 native ID 调用锁版 `nono stop`，对已退出记录也执行 reaper（后代可能晚于父进程退出）。
+
+会话清理由 `cleanup` 模块单独证明（#93）：以会话私有 HOME/XDG/TMPDIR 路径为标记，
+持续记录受管父进程的后代；收尾时 SIGSTOP 候选、复验 `(pid, start_time)` 身份、
+SIGKILL，并要求连续多轮无标记/无候选才写 `cleanup=confirmed`。父进程退出、`ps` 消失或
+`stop` 返回 0 单独都不构成证明。作用域残余：在首次观察前清空继承环境并脱离的后代
+不可见（macOS 无 subreaper/cgroup），需 VM 或上游内核边界；该场景不在本证明内。

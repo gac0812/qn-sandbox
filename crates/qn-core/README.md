@@ -25,8 +25,10 @@ syntax and never accepts a credential value. Install/rollback are local registry
 operations; they do not launch an engine or widen authorization.
 
 `runtime` (#92/#93) carries closed run/status/stop observations for the owning
-runner. `CleanupState` has no `Confirmed` variant: every run and stop report is
-unconfirmed, and no DTO can represent a core `Stopped` transition. A native
+runner. `CleanupState` distinguishes `Unconfirmed` from the reaper's scoped
+`Confirmed` proof; `CleanupOutcome` also carries the terminated-process count.
+A bare parent exit, missing `ps` record or successful native stop is never mapped
+to `Confirmed`, and no DTO can represent a core `Stopped` transition. A native
 `Exited` observation is separate from the owner's phase and from cleanup. `Engine` and
 `Validation` failures distinguish a missing/unverified managed engine from a profile
 the pinned validator rejected; neither variant echoes asset text.

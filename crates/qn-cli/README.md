@@ -138,11 +138,17 @@ stop the recorded native ID; `--force` selects immediate termination and
 `--timeout` is a whole-second graceful period (1-300). Neither command uses a
 numeric PID/PGID.
 
-Every report prints `cleanup: unconfirmed`. The parent's exit, a missing `ps`
-record or a successful `stop` never proves that descendants terminated, so no
-command reports `Stopped` or confirmed cleanup. Escaped/stdio-closed descendants
-are the known #93 limitation. Native foreground sessions are wired for macOS;
-Windows requires the WSL2 route.
+Reports print `cleanup: confirmed` only when the session reaper proves that every
+observed descendant and every process carrying the session-private HOME/XDG/TMPDIR
+marker is gone. A parent exit, a missing `ps` record or a successful `stop` alone
+never proves cleanup. `qn stop` also reaps an already-exited session because a
+descendant may outlive the managed parent.
+
+The proof is scoped: a process that clears the inherited session environment and
+reparents before first observation is not visible without a kernel boundary
+(VM or upstream supervisor). That residual is recorded under #93; the command
+does not map a bare parent exit to `Stopped`. Native foreground sessions are
+wired for macOS; Windows requires the WSL2 route.
 
 ## Broker audit commands (#110 / #120)
 

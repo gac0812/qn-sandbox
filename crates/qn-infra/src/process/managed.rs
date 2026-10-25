@@ -122,6 +122,15 @@ pub fn spawn_managed(spec: &CmdSpec, policy: &dyn ProcessPolicy) -> Result<Manag
 }
 
 impl ManagedProcess {
+    /// Managed parent PID while it remains owned; `None` after reaping.
+    ///
+    /// A numeric PID is an observation for session tracking, never a signal
+    /// identity on its own. Callers pair it with the process start time.
+    #[must_use]
+    pub fn pid(&self) -> Option<u32> {
+        self.child.id()
+    }
+
     /// Take the stdin pipe. The caller must close it when input is complete.
     pub fn take_stdin(&mut self) -> Option<ChildStdin> {
         self.child.stdin().take()
