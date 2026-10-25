@@ -1425,3 +1425,72 @@ mod action_routing_tests {
         ));
     }
 }
+
+/// Global safety banner state derived from all view models.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum SafetyBanner {
+    /// All currently available views have safe renderable posture.
+    Clear,
+    /// Some capability is unavailable or control-plane data failed.
+    Attention,
+    /// Audit/session evidence is present but not fully verified or cleaned up.
+    EvidenceUnverified,
+}
+
+/// Computes the global banner without making a readiness claim.
+#[must_use]
+pub fn safety_banner(snapshot: &ControlPlaneSnapshot) -> SafetyBanner {
+    let attention = matches!(
+        snapshot.profiles,
+        ViewState::Failed { .. } | ViewState::Unavailable { .. }
+    ) || matches!(
+        snapshot.permissions,
+        ViewState::Failed { .. } | ViewState::Unavailable { .. }
+    ) || matches!(
+        snapshot.sessions,
+        ViewState::Failed { .. } | ViewState::Unavailable { .. }
+    ) || matches!(
+        snapshot.audit,
+        ViewState::Failed { .. } | ViewState::Unavailable { .. }
+    );
+    if attention {
+        return SafetyBanner::Attention;
+    }
+    if let ViewState::Ready(cards) = &snapshot.audit {
+        if cards
+            .iter()
+            .any(|card| card.integrity != "verified" || card.state != "observed_closed")
+        {
+            return SafetyBanner::EvidenceUnverified;
+        }
+    }
+    if let ViewState::Ready(cards) = &snapshot.sessions {
+        if cards.iter().any(|card| card.cleanup != "confirmed") {
+            return SafetyBanner::EvidenceUnverified;
+        }
+    }
+    SafetyBanner::Clear
+}
+
+#[cfg(test)]
+mod safety_tests {
+    use super::*;
+    #[test]
+    fn safety_banner_prioritizes_unavailable_and_failed_capabilities() {
+        assert_eq!(
+            safety_banner(&PreviewPreset::Degraded.snapshot()),
+            SafetyBanner::Attention
+        );
+        assert_eq!(
+            safety_banner(&PreviewPreset::Failed.snapshot()),
+            SafetyBanner::Attention
+        );
+    }
+    #[test]
+    fn safety_banner_keeps_unverified_evidence_visible() {
+        assert_eq!(
+            safety_banner(&PreviewPreset::Ready.snapshot()),
+            SafetyBanner::EvidenceUnverified
+        );
+    }
+}
