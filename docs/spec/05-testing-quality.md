@@ -1,6 +1,8 @@
 # 05 — 测试与质量门禁
 
-状态：Draft · 2026-10-24 · **实施状态**：CI 门禁（§3）与覆盖率当前未接入，待 M0 骨架后补上（TODO-001/002）；nono 前置 spike 见 TODO-004。
+状态：Draft · 2026-10-25 · **实施状态**：fmt/clippy/三平台 test/deny/architecture
+已接入；严格 doc 三平台门禁由 #134 接入。每日覆盖率、每周 deny 与每日/PR E2E
+尚未接入；不得以通用单测/文档构建通过替代真实平台安全验收。nono 前置 spike 见 TODO-004。
 
 ## 1. 测试金字塔与各层职责
 
@@ -43,13 +45,18 @@ revoke 后出站 → 立即断供；托管配置写明文 → 拒绝写入。任
 
 | 门 | 命令 | 时机 |
 | --- | --- | --- |
+| architecture | `python3 scripts/check_architecture.py` + 检查器 unittest | 每 PR；声明依赖分层（#132） |
 | fmt | `cargo fmt --all -- --check` | 每 PR |
 | clippy | `cargo clippy --workspace --all-targets -- -D warnings` | 每 PR |
 | test | `cargo test --workspace`（平台矩阵） | 每 PR |
 | deny | `cargo deny check licenses bans advisories` | 每 PR + 每周 |
-| doc | `cargo doc --no-deps`（broken links = fail） | 每 PR |
+| doc | `RUSTDOCFLAGS="-D warnings" cargo doc --locked --workspace --no-deps` | 每 PR / main push；Ubuntu/macOS/Windows（#134） |
 | 攻击演示 | 剧本 1 安全子集（读密钥/越权出站/revoke 断供） | 每 PR（触及 08 机制的必跑） |
 | coverage | `cargo llvm-cov`：core ≥ 90%，适配器逻辑层 ≥ 70% | 每日，低于线开 issue |
+
+`doc` 作业沿用锁定 Rust 1.85 和只读权限，在各宿主上原生构建 cfg 对应的文档；
+任一 rustdoc 警告（含失效链接）即失败。文档不上传、不发布。三个作业独立保留失败
+结果，不设置 continue-on-error；文档构建不运行真实 Agent 或 WSL2 E2E。
 
 ## 4. 平台测试矩阵
 

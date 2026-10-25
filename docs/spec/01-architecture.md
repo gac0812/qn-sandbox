@@ -57,7 +57,7 @@ M1 执行边界已按 [#14](https://github.com/gac0812/qn-sandbox/issues/14) /
 | `qn-vm`（P2 占位） | 强隔离模式：VZ/QEMU VM + guest 内 nono | P0/P1 期间任何实现代码 |
 | `sdks/typescript` `sdks/python` | 契约生成 + 薄人体工学层（M3） | 手写平行类型 |
 
-## 3. 依赖方向（强制，CI 用 cargo-deny ban 校验）
+## 3. 依赖方向（强制，CI architecture 校验）
 
 ```
 qn-cli / qn-ui / qn-mcp / qn-daemon ──► qn-core ◄── qn-nono / qn-broker / qn-gateway / qn-wsl
@@ -70,6 +70,25 @@ qn-nono / qn-wsl ──► 外部：nono 二进制、wsl.exe（经 qn-infra::pro
   适配器互不依赖（公共逻辑下沉 core/infra）；无环 DAG。
 - **引擎可替换**是硬要求：`qn-nono` 是唯一驱动 nono CLI 的 crate；
   P2 的 qn-vm 将实现同一 port 实现强隔离模式切换。
+
+### 3.1 自动门禁（#132）
+
+`python3 scripts/check_architecture.py` 使用 Cargo metadata 检查所有 workspace
+成员的声明依赖，不按宿主平台或 feature 过滤；普通、dev、build、optional、平台条件
+依赖均服从同一边界。重命名和 workspace 继承按 Cargo 解析后的真实包名与路径检查。
+
+| 来源 | 允许依赖的内部 crate |
+| --- | --- |
+| `qn-config` / `qn-infra` | 基础层中的另一个 crate |
+| `qn-core` | `qn-config`、`qn-infra` |
+| 适配器 `qn-nono/broker/gateway/wsl/vm` | `qn-core`、基础层 |
+| `qn-bootstrap` | `qn-core`、适配器、基础层 |
+| `qn-cli` / `qn-daemon` | `qn-core`、`qn-bootstrap`、基础层 |
+| `qn-ui` / `qn-mcp` | `qn-core`、基础层 |
+
+新 workspace crate 必须显式归类；`qn-` 内部依赖必须来自对应 workspace 路径。
+第三方依赖仍由 cargo-deny 检查。门禁检查依赖声明，不证明 Rust 源码/外部进程调用
+满足安全边界，也不代替代码审查。策略修改须同步本节与检查器测试。
 
 ## 4. Ports（core 中的关键 trait）
 
@@ -130,6 +149,11 @@ Unix 进程组或 Windows Job Object。取消/超时先终止再回收；父进�
 证据到实现的对应关系：#46 的用户 default 覆盖 → 隔离配置根；#52 的强杀残留 → 停止清理验证；
 #46 的零缓存撤销 → 按请求检查 grant；#48 的 stderr 歧义 → 显式证据来源与完整性。
 这些前期实测不是完整 Agent、broker 或跨平台 E2E 的完成证明。
+
+宿主 capture 传输（[#96](https://github.com/gac0812/qn-sandbox/issues/96)）采用 snow 的标准
+Noise NNpsk0/25519/ChaChaPoly/SHA256，PSK 仅在宿主私有 binding；grant 句柄不作认证。
+请求及秘密响应均认证加密，consumer 仍负责会话/精确作用域与准入时撤销检查。
+该 broker 内部传输不新增 core Port，不代表生产 provider、审计或 WSL 桥已完成。
 
 ### 4.2 首个审计查询消费者（#110）
 
