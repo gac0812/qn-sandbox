@@ -1,7 +1,7 @@
 //! Closed qn routing metadata; application renderers remain separate (#84).
 use camino::Utf8Path;
 use qn_core::{GrantHandle, SessionId};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::{fmt, io::Write, num::NonZeroU16};
 
 const MAX_BYTES: usize = 4096;
@@ -107,10 +107,7 @@ pub fn write_managed_config(
     binding: &ManagedConfigBinding,
     input: &[u8],
 ) -> Result<(), ManagedConfigError> {
-    if input.len() > MAX_BYTES {
-        return Err(ManagedConfigError::TooLarge);
-    }
-    let manifest: Manifest = serde_json::from_slice(input)?;
+    let manifest: Manifest = decode(input)?;
     if manifest.version != 1
         || manifest.session != binding.session.to_string()
         || manifest.grant != binding.grant.to_string()
@@ -118,15 +115,40 @@ pub fn write_managed_config(
     {
         return Err(ManagedConfigError::BindingMismatch);
     }
+    let serialized = serde_json::to_vec(&manifest)?;
+    publish(root, FILE_NAME, &serialized, Publication::Replace)
+}
+
+pub(crate) fn decode<T: DeserializeOwned>(input: &[u8]) -> Result<T, ManagedConfigError> {
+    if input.len() > MAX_BYTES {
+        return Err(ManagedConfigError::TooLarge);
+    }
+    Ok(serde_json::from_slice(input)?)
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum Publication {
+    Replace,
+    Create,
+}
+
+pub(crate) fn publish(
+    root: &Utf8Path,
+    name: &str,
+    serialized: &[u8],
+    mode: Publication,
+) -> Result<(), ManagedConfigError> {
     if !root.is_absolute() {
         return Err(ManagedConfigError::InvalidRoot);
     }
-    let serialized = serde_json::to_vec(&manifest)?;
     let mut file = tempfile::NamedTempFile::new_in(root)?;
-    file.write_all(&serialized)?;
+    file.write_all(serialized)?;
     file.as_file().sync_all()?;
-    file.persist(root.join(FILE_NAME))
-        .map_err(|error| ManagedConfigError::Io(error.error))?;
+    match mode {
+        Publication::Replace => file.persist(root.join(name)),
+        Publication::Create => file.persist_noclobber(root.join(name)),
+    }
+    .map_err(|error| ManagedConfigError::Io(error.error))?;
     Ok(())
 }
 
