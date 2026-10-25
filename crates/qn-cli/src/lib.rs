@@ -45,6 +45,10 @@ pub enum Error {
     #[error("invalid audit session; use the canonical sxn-<uuid-v7> session ID")]
     InvalidSession,
 
+    /// A validated audit query failed without exposing source payloads.
+    #[error(transparent)]
+    Audit(#[from] qn_core::audit::AuditQueryError),
+
     /// Structured diagnostics could not be encoded.
     #[error("failed to encode diagnostics; retry without --json")]
     Json(#[from] serde_json::Error),
@@ -481,5 +485,41 @@ mod audit_render_tests {
             "provider_requested"
         );
         assert_eq!(value["timeline"]["events"][1]["event"], "service_closed");
+    }
+}
+
+#[cfg(test)]
+mod audit_error_tests {
+    use super::{Error, render_error};
+    use qn_core::audit::AuditQueryError;
+
+    #[test]
+    fn audit_query_errors_preserve_safe_categories() {
+        let cases = [
+            (AuditQueryError::Missing, "not found"),
+            (AuditQueryError::Configuration, "invalid audit source"),
+            (AuditQueryError::Timeout, "timed out"),
+            (AuditQueryError::Limit, "exceeds query limits"),
+            (
+                AuditQueryError::Invalid {
+                    reason: "sequence gap",
+                },
+                "sequence gap",
+            ),
+        ];
+        for (error, expected) in cases {
+            let rendered = render_error(&Error::Audit(error));
+            assert!(rendered.contains(expected), "{rendered}");
+            assert!(!rendered.contains("secret"));
+            assert!(!rendered.contains("/private/"));
+        }
+    }
+
+    #[test]
+    fn audit_decode_error_keeps_the_source_chain_without_raw_payload_contract() {
+        let source = std::io::Error::other("synthetic audit source");
+        let rendered = render_error(&Error::Audit(AuditQueryError::Decode(Box::new(source))));
+        assert!(rendered.contains("audit record malformed"));
+        assert!(rendered.contains("synthetic audit source"));
     }
 }
