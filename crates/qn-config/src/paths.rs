@@ -37,6 +37,8 @@ pub struct QnPaths {
     pub logs: Utf8PathBuf,
     /// 可随时清空的缓存目录 `<root>/cache/`。
     pub cache: Utf8PathBuf,
+    /// WSL 供给布局根 `<root>/wsl/`（受管发行版 vhdx 落位处，qn-wsl 使用）。
+    pub wsl: Utf8PathBuf,
 }
 
 /// 解析平台默认根目录（不含 `QN_HOME` 覆盖逻辑，覆盖见 [`QnPaths::resolve`]）。
@@ -89,6 +91,7 @@ impl QnPaths {
             runtime: root.join("runtime"),
             logs: root.join("logs"),
             cache: root.join("cache"),
+            wsl: root.join("wsl"),
             root,
         }
     }

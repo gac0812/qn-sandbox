@@ -29,6 +29,8 @@ Windows-only：crate 根整体 cfg 门，Linux/macOS 只编译不执行。
 
 ## 供给事实（distro，实测 2026-10-25）
 
+布局注记：受管发行版安装目录经 `QnPaths::wsl`（`<qn-home>/wsl/`）解析——qn-config 是布局唯一权威。
+
 已知限制：种子=Missing 的四步链（install→export→import→unregister）**未实证**
 （本机种子已存在，走的是两步链）；`wsl -l -v` 列表漏报已存在种子时 install 行为
 未验证（按现有实现会走 install 路径——首列 ASCII 匹配，漏报概率极低）；

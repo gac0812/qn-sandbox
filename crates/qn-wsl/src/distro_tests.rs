@@ -1,8 +1,10 @@
 //! `qn-wsl::distro` 单元测试（计划构造纯函数；实跑集成见 `tests/wsl_provision.rs`）。
-#![allow(clippy::unwrap_used)]
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use super::*;
 use camino::Utf8PathBuf;
+use qn_infra::process::CmdSpec;
+use std::time::Duration;
 
 fn input() -> ProvisionInput {
     ProvisionInput {
@@ -82,4 +84,43 @@ fn it_binds_paths_into_commands() {
     let import = &plan.steps[1];
     assert!(import.args_contain(r"C:\qn\wsl\qn-sandbox"));
     assert!(import.args_contain(r"C:\tmp\seed.tar"));
+}
+
+#[tokio::test]
+async fn execute_reports_step_failures_with_label_and_decoded_detail() {
+    // 无副作用的失败命令：未知旗标 → wsl.exe 报错退出（state_of 前置通过）。
+    let plan = ProvisionPlan {
+        steps: vec![PlannedStep {
+            label: "synthetic failing step".to_owned(),
+            spec: CmdSpec::new("wsl")
+                .args(["--qn-unknown-flag-for-test"])
+                .timeout(Duration::from_secs(20))
+                .label("synthetic"),
+        }],
+        cleanup_seed: false,
+    };
+    let err = execute(&plan).await.expect_err("failing step must surface");
+    match err {
+        ProvisionError::StepFailed { label, detail } => {
+            assert_eq!(label, "synthetic failing step");
+            assert!(!detail.is_empty(), "detail must carry the failure facts");
+        }
+        other => panic!("expected StepFailed, got: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn execute_completes_on_a_success_single_step_plan() {
+    // 无副作用的成功命令：wsl --version（state_of 同款只读探测）。
+    let plan = ProvisionPlan {
+        steps: vec![PlannedStep {
+            label: "wsl --version".to_owned(),
+            spec: CmdSpec::new("wsl")
+                .args(["--version"])
+                .timeout(Duration::from_secs(20))
+                .label("version"),
+        }],
+        cleanup_seed: false,
+    };
+    execute(&plan).await.expect("version probe must succeed");
 }
