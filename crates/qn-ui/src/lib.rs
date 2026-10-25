@@ -1273,3 +1273,90 @@ mod assembler_tests {
         ));
     }
 }
+
+/// Validates safe display fields before they enter a desktop snapshot.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SnapshotValidationError {
+    /// A display field is empty or contains a terminal control character.
+    UnsafeDisplayField,
+}
+
+/// Validates a snapshot's user-facing strings without filesystem/network access.
+///
+/// # Errors
+///
+/// Returns [`SnapshotValidationError::UnsafeDisplayField`] for empty or
+/// terminal-control-containing display fields.
+pub fn validate_snapshot(snapshot: &ControlPlaneSnapshot) -> Result<(), SnapshotValidationError> {
+    fn safe(value: &str) -> bool {
+        !value.trim().is_empty() && !value.chars().any(char::is_control)
+    }
+    fn profiles(state: &ViewState<Vec<ProfileCard>>) -> bool {
+        match state {
+            ViewState::Ready(cards) => cards
+                .iter()
+                .all(|c| safe(&c.id) && safe(&c.version) && safe(&c.source)),
+            _ => true,
+        }
+    }
+    fn sessions(state: &ViewState<Vec<SessionCard>>) -> bool {
+        match state {
+            ViewState::Ready(cards) => cards.iter().all(|c| {
+                safe(&c.session) && safe(&c.profile) && safe(&c.phase) && safe(&c.cleanup)
+            }),
+            _ => true,
+        }
+    }
+    fn audits(state: &ViewState<Vec<AuditCard>>) -> bool {
+        match state {
+            ViewState::Ready(cards) => cards.iter().all(|c| {
+                safe(&c.session) && safe(&c.source) && safe(&c.integrity) && safe(&c.state)
+            }),
+            _ => true,
+        }
+    }
+    if profiles(&snapshot.profiles) && sessions(&snapshot.sessions) && audits(&snapshot.audit) {
+        Ok(())
+    } else {
+        Err(SnapshotValidationError::UnsafeDisplayField)
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod validation_tests {
+    use super::*;
+    #[test]
+    fn validation_accepts_preview_presets() {
+        for preset in [
+            PreviewPreset::Ready,
+            PreviewPreset::Degraded,
+            PreviewPreset::Failed,
+        ] {
+            validate_snapshot(&preset.snapshot()).unwrap();
+        }
+    }
+    #[test]
+    fn validation_rejects_control_characters_in_ready_cards() {
+        let snapshot = assemble_snapshot(
+            ViewState::Ready(vec![ProfileCard {
+                id: "qn\nprofile".into(),
+                version: "1.0.0".into(),
+                source: "builtin".into(),
+            }]),
+            ViewState::Unavailable {
+                reason: UnavailableReason::NoEvidence,
+            },
+            ViewState::Unavailable {
+                reason: UnavailableReason::NoEvidence,
+            },
+            ViewState::Unavailable {
+                reason: UnavailableReason::NoEvidence,
+            },
+        );
+        assert_eq!(
+            validate_snapshot(&snapshot),
+            Err(SnapshotValidationError::UnsafeDisplayField)
+        );
+    }
+}
