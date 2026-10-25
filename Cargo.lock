@@ -719,6 +719,9 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "qn-config",
+ "serde",
+ "serde_json",
+ "tempfile",
  "thiserror",
 ]
 
