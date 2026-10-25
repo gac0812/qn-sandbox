@@ -127,8 +127,7 @@ qn stop "$SESSION_ID"
 
 以上是不变式与验收要求，详见[安全规范](docs/spec/08-security.md)。
 
-<details>
-<summary><strong>展开目标架构</strong></summary>
+### 目标架构
 
 ```mermaid
 flowchart TB
@@ -157,8 +156,6 @@ flowchart TB
 ```
 
 分层、依赖方向和当前实现边界见[架构规范](docs/spec/01-architecture.md)与[架构拆分](docs/architecture-breakdown.md)。
-
-</details>
 
 ## 开发文档
 
