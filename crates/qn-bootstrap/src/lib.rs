@@ -47,7 +47,7 @@ pub fn process_policy() -> impl ProcessPolicy {
 /// Rejects a relative profile root and an invalid embedded catalog.
 pub fn profile_registry(
     paths: &qn_config::paths::QnPaths,
-) -> Result<impl qn_core::profile::ProfileRegistry, qn_core::profile::ProfileError> {
+) -> Result<impl qn_core::profile::ProfileRegistry + use<>, qn_core::profile::ProfileError> {
     qn_nono::registry::HostProfileRegistry::new(paths.profiles.clone())
 }
 
@@ -61,7 +61,7 @@ pub fn profile_registry(
 ///
 pub fn engine_setup(
     paths: &qn_config::paths::QnPaths,
-) -> Result<impl qn_core::setup::EngineSetup, qn_core::setup::SetupError> {
+) -> Result<impl qn_core::setup::EngineSetup + use<>, qn_core::setup::SetupError> {
     qn_nono::setup::NonoSetup::new(&paths.engine_cache())
 }
 
@@ -70,7 +70,7 @@ pub fn engine_setup(
 /// Rejects invalid roots; reads preserve missing/invalid/incomplete distinctions.
 pub fn audit_query(
     root: camino::Utf8PathBuf,
-) -> Result<impl qn_core::audit::AuditQuery, qn_core::audit::AuditQueryError> {
+) -> Result<impl qn_core::audit::AuditQuery + use<>, qn_core::audit::AuditQueryError> {
     qn_broker::audit_query::BrokerAuditQuery::new(root)
 }
 
@@ -79,7 +79,10 @@ pub fn audit_query(
 /// Rejects invalid roots and hosts requiring the WSL engine installation route.
 pub fn native_audit_query(
     paths: &qn_config::paths::QnPaths,
-) -> Result<impl qn_core::native_audit::NativeAuditQuery, qn_core::native_audit::NativeAuditError> {
+) -> Result<
+    impl qn_core::native_audit::NativeAuditQuery + use<>,
+    qn_core::native_audit::NativeAuditError,
+> {
     qn_nono::native_audit::ManagedNativeAudit::new(
         paths.audit.clone(),
         &paths.engine_cache(),
