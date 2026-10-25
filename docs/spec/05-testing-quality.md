@@ -3,7 +3,9 @@
 状态：Draft · 2026-10-25 · **实施状态**：GitHub Actions 暂停（#145，私有仓库 runner/额度问题）；
 本地 fmt/clippy/三平台 test/deny/architecture/严格 doc 命令仍是开发验证要求。
 每日覆盖率、每周 deny 与每日/PR E2E 尚未接入；不得以通用单测/文档构建通过替代真实平台安全验收。
-恢复 CI 需独立 PR、管理员确认 Actions 资源并重新验证全矩阵。nono 前置 spike 见 TODO-004。
+恢复 CI 需独立 PR、管理员确认 Actions 资源并重新验证全矩阵。
+
+CI 暂停期间可从仓库任意目录运行 `scripts/verify_local.sh`，它按本表顺序执行 architecture、fmt、clippy、test、strict doc 和 cargo-deny；脚本任一步失败即退出非零，PR 仍需记录平台、命令、结果和未覆盖项。nono 前置 spike 见 TODO-004。
 
 ## 1. 测试金字塔与各层职责
 
