@@ -33,6 +33,7 @@ pub mod manifest;
 pub mod profile;
 pub mod registry;
 pub mod session;
+pub mod setup;
 pub mod target;
 pub mod version;
 

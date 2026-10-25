@@ -215,3 +215,14 @@ or widen a grant. Native validation of both assets uses the pinned binary:
 
     QN_TEST_NONO=/verified/nono cargo test --locked -p qn-nono --lib \
       registry::tests::it_validates_embedded_assets_with_the_pinned_engine -- --ignored
+
+## Engine setup adapter (#159 / #114)
+
+NonoSetup implements the existing core EngineSetup contract using the pinned installer
+and clean-environment version probe. A trusted absolute cache namespace is partitioned
+by native host target. Install reuses download/repair; Inspect checks cached archive and
+installed bytes before execution, without downloading or repairing. The owned blocking
+worker is awaited; dropping the future cannot promise cancellation of filesystem IO.
+Original errors are retained privately behind redacted formatting/source chains.
+No PATH lookup, package/version change or sandbox-readiness claim. Native Windows setup
+returns Unsupported pending WSL composition. Bootstrap/CLI wiring remains in #114.
