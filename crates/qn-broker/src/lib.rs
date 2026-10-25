@@ -15,3 +15,5 @@ mod managed_config;
 pub use managed_config::{
     ManagedConfigBinding, ManagedConfigError, ManagedConfigJsonError, write_managed_config,
 };
+mod claude_config;
+pub use claude_config::{claude_mcp_template, write_claude_mcp_config};
