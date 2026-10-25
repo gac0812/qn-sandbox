@@ -85,6 +85,8 @@ async fn it_bounds_stalled_input_and_expired_delivery() {
         tokio::time::advance(lifetime + Duration::from_secs(1)).await;
     });
     assert!(matches!(accepted, Err(CaptureError::Timeout)));
+    // Virtual time may auto-advance while real sockets await OS readiness (#143).
+    tokio::time::resume();
     let (request, _peer) = tokio::join!(listener.accept(), async {
         let (mut peer, mut channel) = connect(&listener).await;
         send(&mut peer, &mut channel, bytes(b"metadata"))
@@ -92,9 +94,11 @@ async fn it_bounds_stalled_input_and_expired_delivery() {
             .unwrap();
         peer
     });
+    let request = request.unwrap();
+    tokio::time::pause();
     tokio::time::advance(lifetime + Duration::from_secs(1)).await;
     assert!(matches!(
-        request.unwrap().reply(bytes(b"secret")).await,
+        request.reply(bytes(b"secret")).await,
         Err(CaptureError::Timeout)
     ));
 }
