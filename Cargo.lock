@@ -973,6 +973,7 @@ dependencies = [
  "qn-nono",
  "thiserror",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
