@@ -62,3 +62,12 @@ pub fn engine_setup(
 ) -> Result<impl qn_core::setup::EngineSetup, qn_core::setup::SetupError> {
     qn_nono::setup::NonoSetup::new(&paths.engine_cache())
 }
+
+/// Compose a bounded broker journal reader under the trusted host audit root.
+/// # Errors
+/// Rejects invalid roots; reads preserve missing/invalid/incomplete distinctions.
+pub fn audit_query(
+    root: camino::Utf8PathBuf,
+) -> Result<impl qn_core::audit::AuditQuery, qn_core::audit::AuditQueryError> {
+    qn_broker::audit_query::BrokerAuditQuery::new(root)
+}

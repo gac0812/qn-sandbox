@@ -37,6 +37,10 @@ pub enum AuditIntegrity {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AuditEventKind {
+    /// Grant creation was observed; it may since have expired or been revoked.
+    GrantIssued,
+    /// Owned grant invalidation preceded the durable acknowledgment.
+    GrantRevoked,
     /// Host provider intent was recorded before execution.
     ProviderRequested,
     /// Reply was prepared, before final authorization.

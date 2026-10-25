@@ -817,12 +817,15 @@ dependencies = [
 name = "qn-bootstrap"
 version = "0.1.0"
 dependencies = [
+ "camino",
  "process-wrap",
  "qn-broker",
  "qn-config",
  "qn-core",
  "qn-infra",
  "qn-nono",
+ "serde_json",
+ "tempfile",
  "tokio",
  "tokio-util",
  "tracing",

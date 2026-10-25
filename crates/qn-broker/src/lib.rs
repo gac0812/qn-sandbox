@@ -29,3 +29,5 @@ pub mod identity;
 mod lifecycle;
 pub mod provider;
 pub use lifecycle::{AuditedGrant, LifecycleError};
+
+pub mod audit_query;

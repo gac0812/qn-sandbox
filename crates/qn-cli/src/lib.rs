@@ -10,8 +10,10 @@ use clap::{Parser, Subcommand};
 use qn_config::Config;
 use qn_config::paths::QnPaths;
 
+mod audit;
 mod profile;
 mod setup;
+pub use audit::{AuditCommand, AuditFilter, AuditType};
 pub use profile::ProfileCommand;
 
 /// Parsed command-line invocation for the `qn` executable.
@@ -28,6 +30,12 @@ pub struct Cli {
 pub enum Command {
     /// Install or repair the pinned engine, then verify its version.
     Install,
+    /// Read bounded broker audit evidence without changing authorization.
+    Audit {
+        /// Query operation for one canonical session.
+        #[command(subcommand)]
+        command: AuditCommand,
+    },
     /// Check configuration and the integrity/version of the managed engine.
     Doctor {
         /// Emit versioned JSON diagnostics with safe display paths.
@@ -58,6 +66,12 @@ pub enum Error {
     /// Profile catalog or host registry refused the operation.
     #[error(transparent)]
     Profile(#[from] qn_core::profile::ProfileError),
+    /// Follow detected an observed prefix rewrite or truncation.
+    #[error("audit source changed; retain evidence and inspect its writer")]
+    AuditChanged,
+    /// Interrupt handler setup or delivery failed.
+    #[error("audit interrupt handler failed: {0}")]
+    Signal(#[source] std::io::Error),
     /// Configuration paths or values could not be resolved or loaded.
     #[error(transparent)]
     Config(#[from] qn_config::Error),
@@ -93,6 +107,7 @@ pub fn run(cli: &Cli, output: &mut dyn Write) -> Result<(), Error> {
             let installation = setup::inspect(qn_core::setup::SetupOperation::Install, &paths)?;
             setup::render(&installation, output)
         }
+        Command::Audit { command } => audit::run(command, output),
         Command::Doctor { json, config_only } => doctor(output, *json, *config_only),
         Command::Profile { command } => profile::run(command, output),
     }
@@ -195,6 +210,8 @@ fn audit_state_label(state: qn_core::audit::JournalState) -> &'static str {
 
 fn audit_event_label(event: qn_core::audit::AuditEventKind) -> &'static str {
     match event {
+        qn_core::audit::AuditEventKind::GrantIssued => "grant_issued",
+        qn_core::audit::AuditEventKind::GrantRevoked => "grant_revoked",
         qn_core::audit::AuditEventKind::ProviderRequested => "provider_requested",
         qn_core::audit::AuditEventKind::DeliveryPrepared => "delivery_prepared",
         qn_core::audit::AuditEventKind::ReplyWritten => "reply_written",

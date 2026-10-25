@@ -1,6 +1,6 @@
 //! Supplemental broker evidence, never a substitute for native nono audit (#105).
 use qn_core::SessionId;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     fmt,
     num::NonZeroU32,
@@ -13,7 +13,7 @@ use tokio::{
 };
 
 /// Closed events exclude paths, handles, references and all request/provider payloads.
-#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum BrokerEvent {
     /// Grant creation was persisted before exposing its owner.
