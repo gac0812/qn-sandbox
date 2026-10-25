@@ -1,8 +1,9 @@
 # 05 — 测试与质量门禁
 
-状态：Draft · 2026-10-25 · **实施状态**：fmt/clippy/三平台 test/deny/architecture
-已接入；严格 doc 三平台门禁由 #134 接入。每日覆盖率、每周 deny 与每日/PR E2E
-尚未接入；不得以通用单测/文档构建通过替代真实平台安全验收。nono 前置 spike 见 TODO-004。
+状态：Draft · 2026-10-25 · **实施状态**：GitHub Actions 暂停（#145，私有仓库 runner/额度问题）；
+本地 fmt/clippy/三平台 test/deny/architecture/严格 doc 命令仍是开发验证要求。
+每日覆盖率、每周 deny 与每日/PR E2E 尚未接入；不得以通用单测/文档构建通过替代真实平台安全验收。
+恢复 CI 需独立 PR、管理员确认 Actions 资源并重新验证全矩阵。nono 前置 spike 见 TODO-004。
 
 ## 1. 测试金字塔与各层职责
 
@@ -50,7 +51,7 @@ revoke 后出站 → 立即断供；托管配置写明文 → 拒绝写入。任
 | clippy | `cargo clippy --workspace --all-targets -- -D warnings` | 每 PR |
 | test | `cargo test --workspace`（平台矩阵） | 每 PR |
 | deny | `cargo deny check licenses bans advisories` | 每 PR + 每周 |
-| doc | `RUSTDOCFLAGS="-D warnings" cargo doc --locked --workspace --no-deps` | 每 PR / main push；Ubuntu/macOS/Windows（#134） |
+| doc | `RUSTDOCFLAGS="-D warnings" cargo doc --locked --workspace --no-deps` | 恢复后每 PR / main push；Ubuntu/macOS/Windows（#134） |
 | 攻击演示 | 剧本 1 安全子集（读密钥/越权出站/revoke 断供） | 每 PR（触及 08 机制的必跑） |
 | coverage | `cargo llvm-cov`：core ≥ 90%，适配器逻辑层 ≥ 70% | 每日，低于线开 issue |
 

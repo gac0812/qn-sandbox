@@ -1,5 +1,6 @@
 // Tests may panic under coding standard 02 §7; production validation is fallible.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
+use std::fmt::Write as _;
 
 use super::*;
 use serde_json::{Value, json};
@@ -97,7 +98,7 @@ fn it_rejects_unsafe_json_before_creating_or_modifying_files() {
         attacks.push(serde_json::to_vec(&missing).unwrap());
         let mut duplicate = serde_json::to_string(&json).unwrap();
         duplicate.pop();
-        duplicate.push_str(&format!(",{field:?}:{} }}", json[field]));
+        write!(duplicate, ",{field:?}:{} }}", json[field]).unwrap();
         attacks.push(duplicate.into_bytes());
     }
     attacks.extend([
