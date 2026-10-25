@@ -571,3 +571,95 @@ impl PreviewPreset {
         }
     }
 }
+
+/// Errors raised while decoding a UI snapshot envelope.
+#[derive(Debug, thiserror::Error)]
+pub enum UiEnvelopeError {
+    /// The JSON document is malformed or violates the DTO shape.
+    #[error("invalid UI snapshot JSON: {0}")]
+    Json(#[from] serde_json::Error),
+    /// The envelope schema is newer than this UI understands.
+    #[error("unsupported UI snapshot schema version: {0}")]
+    UnsupportedSchema(u8),
+}
+
+/// Versioned envelope exchanged between a future daemon client and the UI shell.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct UiSnapshotEnvelope {
+    /// Wire format version for forward-compatible desktop clients.
+    pub schema_version: u8,
+    /// Safe four-view snapshot.
+    pub snapshot: ControlPlaneSnapshot,
+}
+
+impl UiSnapshotEnvelope {
+    /// Current envelope schema version.
+    pub const SCHEMA_VERSION: u8 = 1;
+
+    /// Wraps a snapshot in the current schema version.
+    #[must_use]
+    pub fn new(snapshot: ControlPlaneSnapshot) -> Self {
+        Self {
+            schema_version: Self::SCHEMA_VERSION,
+            snapshot,
+        }
+    }
+
+    /// Serializes this envelope for a future daemon/UI transport.
+    ///
+    /// # Errors
+    ///
+    /// Returns a serialization error if the contract changes in an incompatible way.
+    pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string(self)
+    }
+
+    /// Parses and checks a versioned UI envelope.
+    ///
+    /// # Errors
+    ///
+    /// Returns a serialization error for malformed JSON or an unsupported schema version.
+    pub fn from_json(text: &str) -> Result<Self, UiEnvelopeError> {
+        let envelope: Self = serde_json::from_str(text)?;
+        if envelope.schema_version != Self::SCHEMA_VERSION {
+            return Err(UiEnvelopeError::UnsupportedSchema(envelope.schema_version));
+        }
+        Ok(envelope)
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod envelope_tests {
+    use super::*;
+
+    #[test]
+    fn envelope_round_trips_preview_states_with_schema_version() {
+        for preset in [
+            PreviewPreset::Ready,
+            PreviewPreset::Degraded,
+            PreviewPreset::Failed,
+        ] {
+            let original = UiSnapshotEnvelope::new(preset.snapshot());
+            let encoded = original.to_json().unwrap();
+            let decoded = UiSnapshotEnvelope::from_json(&encoded).unwrap();
+            assert_eq!(decoded, original);
+            assert_eq!(decoded.schema_version, 1);
+        }
+    }
+
+    #[test]
+    fn unsupported_schema_is_rejected_before_ui_consumption() {
+        let mut encoded = UiSnapshotEnvelope::new(PreviewPreset::Ready.snapshot())
+            .to_json()
+            .unwrap();
+        encoded = encoded.replacen("\"schema_version\":1", "\"schema_version\":99", 1);
+        let error = UiSnapshotEnvelope::from_json(&encoded)
+            .expect_err("future schema must not be silently consumed");
+        assert!(
+            error
+                .to_string()
+                .contains("unsupported UI snapshot schema version")
+        );
+    }
+}
