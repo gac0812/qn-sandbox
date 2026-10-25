@@ -269,3 +269,34 @@ fn it_sanitizes_untrusted_profile_parser_arguments() {
     assert!(!stderr.contains('\u{202e}'));
     assert!(stderr.contains("invalid profile reference"), "{stderr}");
 }
+
+#[test]
+fn it_advertises_validate_and_publish_profile_operations() {
+    let output = run(tempfile::tempdir().unwrap().path(), &["profile", "--help"]);
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(text.contains("validate"), "{text}");
+    assert!(text.contains("publish"), "{text}");
+    for operation in ["validate", "publish"] {
+        let output = run(
+            tempfile::tempdir().unwrap().path(),
+            &["profile", operation, "--help"],
+        );
+        assert!(output.status.success(), "{operation}: {output:?}");
+        assert!(output.stderr.is_empty(), "{operation}: {output:?}");
+        assert!(String::from_utf8(output.stdout).unwrap().contains("Usage:"));
+    }
+}
+
+#[test]
+fn it_rejects_profile_validate_without_echoing_unknown_identity() {
+    let root = tempfile::tempdir().unwrap();
+    let output = run(
+        root.path(),
+        &["profile", "validate", "qn/unknown", "--json"],
+    );
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("unknown profile"), "{stderr}");
+    assert!(!stderr.contains("qn/unknown"), "{stderr}");
+    assert!(output.stdout.is_empty());
+}
