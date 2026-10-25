@@ -89,6 +89,7 @@ The CLI crate also exposes pure renderers for a validated `qn-core::audit::Audit
 object. They do not read files, query adapters, or invent audit evidence. The actual
 reader and `qn audit` command consume these renderers through core/bootstrap; a rendered timeline keeps
 `integrity` and incomplete journal states visible.
+
 ## Official profile catalog (#75 / #59)
 
     qn profile list --json

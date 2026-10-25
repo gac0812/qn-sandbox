@@ -1,4 +1,4 @@
-import socket, argparse, platform, hashlib, http.server, json, os, pathlib, select, shutil, subprocess, tempfile, threading
+import socket, argparse, platform, hashlib, http.server, json, os, pathlib, select, shutil, signal, subprocess, tempfile, threading
 parser = argparse.ArgumentParser(description='Synthetic pinned-nono grant capture verification (#99)')
 parser.add_argument('--workspace', required=True, type=pathlib.Path)
 parser.add_argument('--nono', required=True, type=pathlib.Path)
@@ -39,7 +39,7 @@ rescue Errno::EACCES, Errno::EPERM
   checks['provider_secret_denied'] = true
 end
 begin
-  File.read(File.join(File.dirname(binding), 'broker-audit.jsonl'))
+  File.read(ARGV.fetch(3))
   checks['audit_denied'] = false
 rescue Errno::EACCES, Errno::EPERM
   checks['audit_denied'] = true
@@ -76,8 +76,9 @@ def case(mode):
     thread = threading.Thread(target=upstream.serve_forever); thread.start()
     broker = None
     launcher = None
+    follower = None
     try:
-        for d in ['home','config','state','cache','tmp','project']:(root/d).mkdir()
+        for d in ['home','config','state','cache','tmp','project','audit']:(root/d).mkdir()
         relay = root/'capture-relay'; shutil.copy2(BASE/'target/debug/examples/capture_relay', relay)
         (root/'home/.ssh').mkdir()
         (root/'home/.ssh/canary').write_text('synthetic-host-secret')
@@ -89,17 +90,24 @@ def case(mode):
         launcher = subprocess.Popen([str(BASE/'target/debug/examples/bound_launch_probe'),str(root),str(NONO)],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,env=launcher_env)
         assert select.select([launcher.stdout],[],[],8)[0], 'launch reservation timeout'
         association = json.loads(launcher.stdout.readline())
+        audit_path = root/'audit'/(association['session_id']+'.broker.jsonl')
         native = association['native_id']
         expected_native = native if mode != 'mismatch' else format(int(native,16)^1,'016x')
         broker = subprocess.Popen([str(BASE/'target/debug/examples/grant_capture_probe'),str(binding),origin,mode,expected_native,association['session_id']],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
         assert select.select([broker.stdout],[],[],8)[0], 'broker readiness timeout'
         assert broker.stdout.readline().strip() == 'ready', 'broker readiness failed'
+        follower = subprocess.Popen([str(BASE/'target/debug/qn'),'audit','follow','--session',association['session_id'],'--type','grant','--since','0','--json'],env=dict(os.environ,QN_HOME=str(root)),stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+        assert select.select([follower.stdout],[],[],8)[0], 'follow initial flush timeout'
+        first_report = json.loads(follower.stdout.readline())
+        assert first_report['schema_version'] == 1
+        first_batch = first_report['timeline']
+        assert [event['event'] for event in first_batch['events']] == ['grant_issued']
         os.chmod(binding,0o600)
         port = int(json.loads(binding.read_text())['address'].split(':')[-1])
         (root/'project/client.rb').write_text(CLIENT)
         profile = {'meta':{'name':'qn-capture-test','version':'1'},'extends':'default','filesystem':{'allow':[str(root/'project')]},'security':{'capability_elevation':False,'signal_mode':'isolated','process_info_mode':'isolated'},'environment':{'allow_vars':['PATH','HOME','LANG']},'network':{'credentials':['qnprobe'],'custom_credentials':{'qnprobe':{'upstream':origin,'credential_key':'cmd://qnprobe','env_var':'QNPROBE_TOKEN','inject_header':'Authorization','credential_format':'Bearer {}','endpoint_rules':[{'method':'GET','path':'/probe'}]}}},'credential_capture':{'qnprobe':{'provider':{'command':[str(relay),str(binding)],'config':{}},'stdin':'request_json','cache_ttl_secs':0,'timeout_secs':6}}}
         policy=root/'profile.json';policy.write_text(json.dumps(profile));os.chmod(policy,0o600)
-        out,err = launcher.communicate(json.dumps(['/usr/bin/ruby',str(root/'project/client.rb'),str(binding),str(port),str(2 if mode=='normal' else 1)]), timeout=25)
+        out,err = launcher.communicate(json.dumps(['/usr/bin/ruby',str(root/'project/client.rb'),str(binding),str(port),str(2 if mode=='normal' else 1),str(audit_path)]), timeout=25)
         assert launcher.returncode == 0, 'bound launcher failed: ' + err
         result = json.loads(out)
         assert not result['stdout_truncated'] and not result['stderr_truncated']
@@ -114,21 +122,50 @@ def case(mode):
         print('broker:',out.strip(),'exit:',broker.returncode,flush=True)
         if err:print('broker:',err.strip(),flush=True)
         assert broker.returncode==0
-        audit=(root/'broker-audit.jsonl').read_text()
+        audit=audit_path.read_text()
         assert 'qn-synthetic-credential' not in audit
         records=[json.loads(line) for line in audit.splitlines()]
         assert all(record['session_id']==association['session_id'] for record in records), 'audit belongs to another qn session'
         events=[record['event'] for record in records]
         expected={'normal':['grant_issued','provider_requested','delivery_prepared','reply_written','grant_revoked','denied_after_revoke','service_closed'], 'race':['grant_issued','provider_requested','grant_revoked','delivery_prepared','denied_after_revoke','service_closed'], 'mismatch':['grant_issued','denied','grant_revoked','service_closed'], 'audit_failure':['grant_issued','provider_requested']}
         # Already admitted writes may complete after revoke; never claim retrospective cancellation.
-        alternate = expected[mode].copy()
         if mode == 'normal':
+            alternate = expected[mode].copy()
             alternate[3:5] = ['grant_revoked', 'reply_written']
-        assert events in [expected[mode], alternate],events
+            assert events in [expected[mode], alternate], events
+        else:
+            assert events==expected[mode],events
         print('audit:',events,flush=True)
+        queried = subprocess.run([str(BASE/'target/debug/qn'),'audit','show',association['session_id'],'--json'], env=dict(os.environ,QN_HOME=str(root)),capture_output=True,text=True,timeout=8)
+        assert queried.returncode == 0, 'CLI query failed: ' + queried.stderr
+        report = json.loads(queried.stdout)
+        assert report['schema_version'] == 1
+        timeline = report['timeline']
+        assert timeline['session_id'] == association['session_id']
+        assert timeline['source'] == 'broker' and timeline['integrity'] == 'unverified'
+        assert timeline['state'] == ('open' if mode == 'audit_failure' else 'observed_closed')
+        assert [event['event'] for event in timeline['events']] == events
+        assert 'qn-synthetic-credential' not in queried.stdout+queried.stderr
+        print('cli:',timeline['source'],timeline['state'],len(timeline['events']),'events',flush=True)
+        filtered = subprocess.run([str(BASE/'target/debug/qn'),'audit','list','--session',association['session_id'],'--type','denial','--since','0','--json'],env=dict(os.environ,QN_HOME=str(root)),capture_output=True,text=True,timeout=8)
+        assert filtered.returncode == 0, 'filtered query failed'
+        denials = json.loads(filtered.stdout)['timeline']
+        assert denials['events'] == [event for event in timeline['events'] if event['event'] in ['denied','denied_after_revoke']]
+        assert denials['state'] == timeline['state']
+        # An exhausted journal has no closing record; exercise actual Ctrl-C on the follower.
+        if mode == 'audit_failure': follower.send_signal(signal.SIGINT)
+        followed,follow_error = follower.communicate(timeout=8)
+        assert follower.returncode == 0, 'live query failed: ' + follow_error
+        batches = [first_batch] + [json.loads(line)['timeline'] for line in followed.splitlines()]
+        assert all(batch['session_id'] == association['session_id'] and batch['source'] == 'broker' and batch['integrity'] == 'unverified' for batch in batches)
+        assert [event for batch in batches for event in batch['events']] == [event for event in timeline['events'] if event['event'] in ['grant_issued','grant_revoked']]
+        assert batches[-1]['state'] == timeline['state']
+        assert 'qn-synthetic-credential' not in filtered.stdout+filtered.stderr+followed+follow_error
+        print('cli follow:',len(batches),'batches; denial filter:',len(denials['events']),'events',flush=True)
         assert 'qn-synthetic-credential' not in out+err, 'broker logged credential material'
         assert 'qn-synthetic-credential' not in result['stdout']+result['stderr'], 'credential leaked into process output'
     finally:
+        if follower and follower.poll() is None:follower.terminate();follower.communicate(timeout=8)
         if launcher and launcher.poll() is None:launcher.terminate();launcher.communicate(timeout=8)
         if broker and broker.poll() is None:broker.terminate();broker.communicate(timeout=8)
         upstream.shutdown();upstream.server_close();thread.join(timeout=3)

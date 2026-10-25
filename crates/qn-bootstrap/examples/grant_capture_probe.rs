@@ -66,7 +66,7 @@ async fn serve(args: &[String]) -> Result<()> {
             .arg(home.join("provider-secret").as_str())
     };
     let audit_file = tempfile::NamedTempFile::new_in(home)?;
-    let audit_path = home.join("broker-audit.jsonl");
+    let audit_path = home.join("audit").join(format!("{session}.broker.jsonl"));
     let audit_file = audit_file.persist_noclobber(&audit_path)?;
     let capacity = if mode == "audit_failure" {
         NonZeroU32::new(2).ok_or(CaptureError::Rejected)?
