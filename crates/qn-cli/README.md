@@ -11,6 +11,8 @@ qn --version
 qn --help
 qn doctor
 qn doctor --json
+qn doctor --config-only
+qn doctor --config-only --json
 ```
 
 `qn doctor` resolves `QN_HOME` (falling back to the platform default), loads
@@ -26,6 +28,11 @@ streams, and exit codes retain clap's normal behavior.
 The current `doctor` output explicitly marks the sandbox engine as **not
 checked**. It is a configuration diagnostic only and must not be treated as
 evidence that nono or a restricted Agent session is ready.
+
+`qn doctor --config-only` explicitly requests configuration-only diagnostics.
+It currently has the same output as `qn doctor`, because engine probing is not
+wired yet. The flag is reserved for the engine-aware doctor flow and keeps this
+configuration contract stable when that flow is added.
 
 ## Structured configuration diagnostics
 

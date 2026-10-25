@@ -110,6 +110,43 @@ fn it_uses_terminal_safe_display_paths_even_after_json_decoding() {
 }
 
 #[test]
+fn it_accepts_config_only_for_text_and_json_diagnostics() {
+    let home = tempfile::tempdir().expect("temporary home");
+    for arguments in [
+        vec!["doctor", "--config-only"],
+        vec!["doctor", "--config-only", "--json"],
+        vec!["doctor", "--json", "--config-only"],
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_qn"))
+            .args(&arguments)
+            .env("QN_HOME", home.path())
+            .output()
+            .expect("qn should run");
+        assert_eq!(output.status.code(), Some(0), "{output:?}");
+        assert!(output.stderr.is_empty(), "{output:?}");
+        if arguments.contains(&"--json") {
+            let report: Value = serde_json::from_slice(&output.stdout).expect("JSON report");
+            assert_eq!(report["sandbox_engine"], "not_checked");
+        } else {
+            let stdout = String::from_utf8(output.stdout).expect("UTF-8 text");
+            assert!(stdout.contains("sandbox engine: not checked"));
+        }
+    }
+}
+
+#[test]
+fn it_shows_config_only_in_doctor_help() {
+    let output = Command::new(env!("CARGO_BIN_EXE_qn"))
+        .args(["doctor", "--help"])
+        .output()
+        .expect("qn should run");
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8(output.stdout).expect("UTF-8 help");
+    assert!(stdout.contains("--config-only"));
+    assert!(stdout.contains("--json"));
+}
+
+#[test]
 fn it_preserves_the_full_unsigned_timeout_range() {
     let home = tempfile::tempdir().expect("temporary home");
     let output = doctor(home.path())
