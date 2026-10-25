@@ -219,6 +219,7 @@ fn audit_event_label(event: qn_core::audit::AuditEventKind) -> &'static str {
         qn_core::audit::AuditEventKind::DeliveryPrepared => "delivery_prepared",
         qn_core::audit::AuditEventKind::ReplyWritten => "reply_written",
         qn_core::audit::AuditEventKind::Denied => "denied",
+        qn_core::audit::AuditEventKind::DeniedAfterRevoke => "denied_after_revoke",
         qn_core::audit::AuditEventKind::Failed => "failed",
         qn_core::audit::AuditEventKind::ServiceClosed => "service_closed",
     }

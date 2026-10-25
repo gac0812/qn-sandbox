@@ -164,6 +164,7 @@ fn project(event: BrokerEvent) -> AuditEventKind {
         BrokerEvent::DeliveryPrepared => AuditEventKind::DeliveryPrepared,
         BrokerEvent::ReplyWritten => AuditEventKind::ReplyWritten,
         BrokerEvent::Denied => AuditEventKind::Denied,
+        BrokerEvent::DeniedAfterRevoke => AuditEventKind::DeniedAfterRevoke,
         BrokerEvent::Failed => AuditEventKind::Failed,
         BrokerEvent::ServiceClosed => AuditEventKind::ServiceClosed,
     }

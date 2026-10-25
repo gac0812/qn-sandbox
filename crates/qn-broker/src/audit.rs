@@ -28,6 +28,8 @@ pub enum BrokerEvent {
     ReplyWritten,
     /// Identity or current authorization rejected this request.
     Denied,
+    /// Exact owner and scope match retained, unexpired revocation evidence.
+    DeniedAfterRevoke,
     /// Transport, provider, cancellation or delivery failed.
     Failed,
     /// Owned capture serving ended; this does not prove sandbox process cleanup.

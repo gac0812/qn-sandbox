@@ -43,7 +43,10 @@ impl AuditFilter {
             return true;
         };
         match kind {
-            AuditType::Denial => matches!(event.event, AuditEventKind::Denied),
+            AuditType::Denial => matches!(
+                event.event,
+                AuditEventKind::Denied | AuditEventKind::DeniedAfterRevoke
+            ),
             AuditType::Grant => matches!(
                 event.event,
                 AuditEventKind::GrantIssued | AuditEventKind::GrantRevoked

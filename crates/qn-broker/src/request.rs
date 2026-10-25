@@ -154,7 +154,12 @@ impl RequestHandler<'_> {
         error: GrantError,
         cancel: &CancellationToken,
     ) -> Result<(), RequestError> {
-        record(self.grant, BrokerEvent::Denied, cancel).await?;
+        let event = if error == GrantError::Revoked {
+            BrokerEvent::DeniedAfterRevoke
+        } else {
+            BrokerEvent::Denied
+        };
+        record(self.grant, event, cancel).await?;
         if error == GrantError::Unavailable {
             return Err(error.into());
         }

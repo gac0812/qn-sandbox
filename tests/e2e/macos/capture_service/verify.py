@@ -119,7 +119,8 @@ def case(mode):
         records=[json.loads(line) for line in audit.splitlines()]
         assert all(record['session_id']==association['session_id'] for record in records), 'audit belongs to another qn session'
         events=[record['event'] for record in records]
-        expected={'normal':['grant_issued','provider_requested','delivery_prepared','reply_written','grant_revoked','denied','service_closed'], 'race':['grant_issued','provider_requested','grant_revoked','delivery_prepared','denied','service_closed'], 'mismatch':['grant_issued','denied','grant_revoked','service_closed'], 'audit_failure':['grant_issued','provider_requested']}
+        expected={'normal':['grant_issued','provider_requested','delivery_prepared','reply_written','grant_revoked','denied_after_revoke','service_closed'], 'race':['grant_issued','provider_requested','grant_revoked','delivery_prepared','denied_after_revoke','service_closed'], 'mismatch':['grant_issued','denied','grant_revoked','service_closed'], 'audit_failure':['grant_issued','provider_requested']}
+        # Already admitted writes may complete after revoke; never claim retrospective cancellation.
         alternate = expected[mode].copy()
         if mode == 'normal':
             alternate[3:5] = ['grant_revoked', 'reply_written']

@@ -1,7 +1,7 @@
 //! Secret-free authorization state for the host capture boundary (#79).
 use qn_core::{GrantHandle, SessionId};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     fmt,
     num::NonZeroUsize,
     sync::Mutex,
@@ -58,9 +58,12 @@ pub enum GrantError {
     /// A grant needs bounded scopes and a positive, representable lifetime.
     #[error("invalid grant; supply 1-64 scopes and a nonzero representable lifetime")]
     InvalidGrant,
-    /// Authorization failed for any unknown, expired, revoked or mismatched grant.
+    /// Authorization failed without exact unexpired revocation evidence.
     #[error("capture denied; obtain a live grant for this session and exact request scope")]
     Denied,
+    /// Exact owner and scope match retained, unexpired revocation evidence (#113).
+    #[error("capture denied after revoke; obtain a new explicitly authorized grant")]
+    Revoked,
     /// Capacity is exhausted by unexpired grants.
     #[error("grant capacity reached; revoke unused grants or wait for expiry")]
     Capacity,
@@ -72,6 +75,37 @@ struct Grant {
     session: SessionId,
     scopes: Vec<CaptureScope>,
     expires: Instant,
+}
+#[derive(Default)]
+struct GrantState {
+    active: HashMap<GrantHandle, Grant>,
+    revoked: VecDeque<(GrantHandle, Grant)>,
+}
+impl GrantState {
+    fn remember(&mut self, handle: GrantHandle, grant: Grant, capacity: usize) {
+        if self.revoked.len() == capacity {
+            self.revoked.pop_front();
+        }
+        self.revoked.push_back((handle, grant));
+    }
+    fn denial(
+        &self,
+        handle: GrantHandle,
+        session: SessionId,
+        scope: &CaptureScope,
+        now: Instant,
+    ) -> GrantError {
+        if self.revoked.iter().any(|(id, grant)| {
+            *id == handle
+                && grant.session == session
+                && grant.expires > now
+                && grant.scopes.contains(scope)
+        }) {
+            GrantError::Revoked
+        } else {
+            GrantError::Denied
+        }
+    }
 }
 
 /// Bounded host-only grants. A handle is an identifier, not caller authentication.
@@ -89,7 +123,7 @@ struct Grant {
 /// # Ok::<(), qn_broker::GrantError>(())
 /// ```
 pub struct GrantRegistry {
-    grants: Mutex<HashMap<GrantHandle, Grant>>,
+    grants: Mutex<GrantState>,
     capacity: NonZeroUsize,
 }
 impl fmt::Debug for GrantRegistry {
@@ -102,7 +136,7 @@ impl GrantRegistry {
     #[must_use]
     pub fn new(capacity: NonZeroUsize) -> Self {
         Self {
-            grants: Mutex::new(HashMap::new()),
+            grants: Mutex::new(GrantState::default()),
             capacity,
         }
     }
@@ -129,12 +163,13 @@ impl GrantRegistry {
         }
         let expires = now.checked_add(lifetime).ok_or(GrantError::InvalidGrant)?;
         let mut grants = self.grants.lock().map_err(|_| GrantError::Unavailable)?;
-        grants.retain(|_, grant| grant.expires > now);
-        if grants.len() >= self.capacity.get() {
+        grants.active.retain(|_, grant| grant.expires > now);
+        grants.revoked.retain(|(_, grant)| grant.expires > now);
+        if grants.active.len() >= self.capacity.get() {
             return Err(GrantError::Capacity);
         }
         let handle = GrantHandle::new();
-        grants.insert(
+        grants.active.insert(
             handle,
             Grant {
                 session,
@@ -146,7 +181,7 @@ impl GrantRegistry {
     }
     /// Check before provider work; delivery must recheck.
     /// # Errors
-    /// Returns Denied for unknown, expired, revoked or mismatched authorization.
+    /// Returns Revoked only for retained exact unexpired evidence, otherwise Denied.
     pub fn authorize(
         &self,
         handle: GrantHandle,
@@ -179,8 +214,12 @@ impl GrantRegistry {
         deliver: impl FnOnce() -> T,
     ) -> Result<T, GrantError> {
         let grants = self.grants.lock().map_err(|_| GrantError::Unavailable)?;
-        let grant = grants.get(&handle).ok_or(GrantError::Denied)?;
-        if grant.session != session || grant.expires <= clock() || !grant.scopes.contains(scope) {
+        let now = clock();
+        let grant = grants
+            .active
+            .get(&handle)
+            .ok_or_else(|| grants.denial(handle, session, scope, now))?;
+        if grant.session != session || grant.expires <= now || !grant.scopes.contains(scope) {
             return Err(GrantError::Denied);
         }
         let result = deliver();
@@ -192,13 +231,19 @@ impl GrantRegistry {
     /// Refuses a handle belonging to another session or poisoned state.
     pub fn revoke(&self, handle: GrantHandle, session: SessionId) -> Result<(), GrantError> {
         let mut grants = self.grants.lock().map_err(|_| GrantError::Unavailable)?;
-        if grants
-            .get(&handle)
-            .is_some_and(|grant| grant.session != session)
-        {
+        let owned = grants.active.get(&handle).or_else(|| {
+            grants
+                .revoked
+                .iter()
+                .find(|(id, _)| *id == handle)
+                .map(|(_, grant)| grant)
+        });
+        if owned.is_some_and(|grant| grant.session != session) {
             return Err(GrantError::Denied);
         }
-        grants.remove(&handle);
+        if let Some(grant) = grants.active.remove(&handle) {
+            grants.remember(handle, grant, self.capacity.get());
+        }
         Ok(())
     }
     /// Revoke all current grants for an authenticated session and return their count.
@@ -207,9 +252,17 @@ impl GrantRegistry {
     /// Returns Unavailable if authorization state is poisoned.
     pub fn revoke_session(&self, session: SessionId) -> Result<usize, GrantError> {
         let mut grants = self.grants.lock().map_err(|_| GrantError::Unavailable)?;
-        let before = grants.len();
-        grants.retain(|_, grant| grant.session != session);
-        Ok(before - grants.len())
+        let owned: Vec<_> = grants
+            .active
+            .iter()
+            .filter_map(|(handle, grant)| (grant.session == session).then_some(*handle))
+            .collect();
+        for handle in &owned {
+            if let Some(grant) = grants.active.remove(handle) {
+                grants.remember(*handle, grant, self.capacity.get());
+            }
+        }
+        Ok(owned.len())
     }
 }
 
