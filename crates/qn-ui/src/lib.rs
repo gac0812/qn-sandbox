@@ -939,3 +939,100 @@ mod permission_tests {
         assert!(completed.can_grant);
     }
 }
+
+/// Safe session action state for the Sessions view.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum SessionActionState {
+    /// A running/starting session can receive a stop request.
+    CanStop,
+    /// The owner has observed exit; stop is no longer offered.
+    Exited,
+    /// The session failed before a stop action was available.
+    Failed,
+    /// The session data is not available to this UI.
+    Unavailable,
+}
+
+/// Safe detailed session view model.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct SessionModel {
+    /// Base session card.
+    pub card: SessionCard,
+    /// Owner-observed end reason, if any.
+    pub end: Option<String>,
+    /// Native process observation, if available.
+    pub native: Option<String>,
+    /// Cleanup proof posture; expected to remain unconfirmed until #93.
+    pub cleanup: String,
+    /// Available primary action.
+    pub action: SessionActionState,
+}
+
+impl SessionModel {
+    /// Builds a session model from safe display fields.
+    #[must_use]
+    pub fn new(card: SessionCard, end: Option<String>, native: Option<String>) -> Self {
+        let action = match card.phase.as_str() {
+            "starting" | "running" => SessionActionState::CanStop,
+            "exited_observed" => SessionActionState::Exited,
+            "failed" => SessionActionState::Failed,
+            _ => SessionActionState::Unavailable,
+        };
+        Self {
+            card,
+            end,
+            native,
+            cleanup: "unconfirmed".into(),
+            action,
+        }
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod session_model_tests {
+    use super::*;
+
+    fn card(phase: &str) -> SessionCard {
+        SessionCard {
+            session: "sxn-preview".into(),
+            profile: "qn/claude-code".into(),
+            phase: phase.into(),
+            cleanup: "unconfirmed".into(),
+        }
+    }
+
+    #[test]
+    fn session_actions_follow_owner_observed_phase() {
+        assert_eq!(
+            SessionModel::new(card("starting"), None, None).action,
+            SessionActionState::CanStop
+        );
+        assert_eq!(
+            SessionModel::new(card("running"), None, Some("running".into())).action,
+            SessionActionState::CanStop
+        );
+        assert_eq!(
+            SessionModel::new(
+                card("exited_observed"),
+                Some("exited".into()),
+                Some("exited".into())
+            )
+            .action,
+            SessionActionState::Exited
+        );
+        assert_eq!(
+            SessionModel::new(card("failed"), None, None).action,
+            SessionActionState::Failed
+        );
+    }
+
+    #[test]
+    fn session_model_keeps_cleanup_unconfirmed() {
+        let model = SessionModel::new(card("running"), None, None);
+        assert_eq!(model.cleanup, "unconfirmed");
+        let encoded = serde_json::to_string(&model).unwrap();
+        assert!(encoded.contains("unconfirmed"));
+        assert!(!encoded.contains("secret"));
+    }
+}
