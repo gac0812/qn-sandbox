@@ -223,6 +223,21 @@ integrity=unverified、coverage=network_only。宿主目录可信前提、目录
 回到上一已验证版本。资产发布不等于在线 Agent 认证 E2E、跨平台验收或 #93 整树清理完成。
 按 #14/#47 委托实施，未声明 B/C 个人审批。
 
+### 4.7 前台会话运行、状态与停止（#92 / #93）
+
+`qn run --profile <id> -- <argv...>` 经 bootstrap 组合：解析并校验 profile、校验托管引擎
+归档/二进制完整性与版本、在 `QN_HOME/runtime/<session>` 建立私有隔离 HOME/XDG、预留
+`LaunchBinding`、发布 qn/native/runtime 审计关联，然后以继承 stdio 的前台进程启动。
+profile 资产只含句柄/代理地址，不含凭证明文；grant 仍由 broker 逐请求核验。运行目录必须
+位于 profile 系统组授予路径之外（例如 macOS 上不要在 `/private/var` 下设置 `QN_HOME`），
+否则 nono 会拒绝初始化。
+
+`qn status <session>` 读取 owner 记录并可选查询原生 `ps --all` 观察；`qn stop <session>`
+用记录中的预定 native ID 调用锁版 `nono stop`，绝不使用数字 PID/PGID。所有报告只包含
+`cleanup=unconfirmed`；core 没有可表示“已确认清理”的类型，也绝不把父进程退出、`ps` 消失或
+`stop` 返回 0 映射为 core `Stopped`。关闭 stdio 或主动 setsid 脱离的后代仍可能存活，
+这是 #93 的明确限制。Windows/WSL 前台路由尚未接线。
+
 ## 5. 数据流（两个代表场景）
 
 **场景 A：`qn run --agent claude-code`（P0 主路径）**

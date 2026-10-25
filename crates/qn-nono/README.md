@@ -229,6 +229,23 @@ Original errors are retained privately behind redacted formatting/source chains.
 No PATH lookup, package/version change or sandbox-readiness claim. Native Windows setup
 returns Unsupported pending WSL composition. Bootstrap/CLI wiring remains in #114.
 
+## Official profile runner (#92 / #93)
+
+`PreparedOfficial::prepare` writes a validated official asset into a caller-owned
+private root, creates the isolated HOME/XDG/app directories, and applies the same
+physical path guards as the offline profile (workdir vs control, engine, current
+controller and host credential directories). `bound_run_command` injects the
+predetermined native identity from `LaunchBinding`, keeps the parent environment
+cleared, rebuilds only PATH/HOME/XDG/TMPDIR/LANG, and inherits the terminal for an
+interactive Agent.
+
+The runner never maps a parent exit, a successful native `stop`, a missing `ps`
+record or a closed stdio stream to confirmed cleanup. `stop` is delegated to the
+pinned engine by the predetermined native ID, never a numeric PID/PGID. Escaped or
+stdio-closed descendants may survive after the supervisor exits; this is the
+explicit #93 limitation and is why no production `Stopped`/stop-success state is
+activated.
+
 ## Retained native audit (#121)
 
 LaunchBinding::publish_audit stores an exclusive bounded qn/native/runtime association

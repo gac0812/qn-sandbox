@@ -31,6 +31,8 @@ pub struct QnPaths {
     pub profiles: Utf8PathBuf,
     /// 审计呈现副本目录 `<root>/audit/`（防篡改源在 nono 侧）。
     pub audit: Utf8PathBuf,
+    /// 会话运行根目录 `<root>/runtime/`（私有会话记录、控制关联与隔离 HOME）。
+    pub runtime: Utf8PathBuf,
     /// 日志目录 `<root>/logs/`。
     pub logs: Utf8PathBuf,
     /// 可随时清空的缓存目录 `<root>/cache/`。
@@ -55,6 +57,15 @@ pub fn platform_default_root() -> Option<Utf8PathBuf> {
     dirs::home_dir().and_then(|p| Utf8PathBuf::from_path_buf(p.join(".qn")).ok())
 }
 
+/// Resolve the host user's home directory for profile path guards.
+///
+/// Returns `None` when the platform home cannot be resolved or is not UTF-8;
+/// callers must fail closed rather than skip protected-path checks.
+#[must_use]
+pub fn platform_host_home() -> Option<Utf8PathBuf> {
+    dirs::home_dir().and_then(|path| Utf8PathBuf::from_path_buf(path).ok())
+}
+
 impl QnPaths {
     /// Managed engine cache namespace; the adapter adds target and pinned version.
     ///
@@ -75,6 +86,7 @@ impl QnPaths {
             sessions: root.join("sessions.json"),
             profiles: root.join("profiles"),
             audit: root.join("audit"),
+            runtime: root.join("runtime"),
             logs: root.join("logs"),
             cache: root.join("cache"),
             root,

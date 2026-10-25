@@ -824,6 +824,7 @@ dependencies = [
  "qn-core",
  "qn-infra",
  "qn-nono",
+ "serde",
  "serde_json",
  "tempfile",
  "tokio",
@@ -854,6 +855,7 @@ dependencies = [
 name = "qn-cli"
 version = "0.1.0"
 dependencies = [
+ "camino",
  "clap",
  "qn-bootstrap",
  "qn-config",
@@ -863,6 +865,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]

@@ -1,8 +1,10 @@
 # qn-cli
 
-`qn` is the command-line surface for qn-sandbox. This crate currently covers
-configuration diagnostics, managed engine installation/inspection and broker audit queries.
-Production sandbox execution is not implemented here yet.
+`qn` is the command-line surface for qn-sandbox. It covers configuration
+diagnostics, managed engine installation/inspection, the versioned profile
+catalog, broker/native audit queries, and a foreground session run/status/stop
+surface. It does not implement sandbox behavior itself; adapters are assembled
+through `qn-bootstrap`.
 
 ## Commands
 
@@ -20,6 +22,9 @@ qn profile install <id>
 qn profile rollback <id>
 qn profile validate <id> [--json]
 qn profile publish --id <id> --version <version> <absolute-asset-path>
+qn run --profile <id> -- <command...>
+qn status <session>
+qn stop <session> [--force] [--timeout <secs>]
 ```
 
 `qn doctor` resolves `QN_HOME` (falling back to the platform default), loads
@@ -114,6 +119,27 @@ installs it as the requested strict version and selects it. Only compiled offici
 identities are accepted, so the app state directory stays catalog-owned. The asset
 `meta.version` must equal `--version`; conflicting bytes for an existing version are
 refused. Rollback remains available to the previous verified version.
+
+## Foreground sessions (#92 / #93)
+
+`qn run --profile <id> -- <command...>` verifies the managed engine, creates a
+private `QN_HOME/runtime/<session>` home, reserves a predetermined native
+identity, publishes the launch-owned audit association, then starts the pinned
+engine with inherited stdio so an interactive Agent owns the terminal. The
+selected working directory is the current directory; the profile must be a
+compiled official identity or an installed version.
+
+`qn status <session>` reads the owner record and, when the engine is reachable,
+a live `nono ps --all` observation. `qn stop <session>` asks the pinned engine to
+stop the recorded native ID; `--force` selects immediate termination and
+`--timeout` is a whole-second graceful period (1-300). Neither command uses a
+numeric PID/PGID.
+
+Every report prints `cleanup: unconfirmed`. The parent's exit, a missing `ps`
+record or a successful `stop` never proves that descendants terminated, so no
+command reports `Stopped` or confirmed cleanup. Escaped/stdio-closed descendants
+are the known #93 limitation. Native foreground sessions are wired for macOS;
+Windows requires the WSL2 route.
 
 ## Broker audit commands (#110 / #120)
 

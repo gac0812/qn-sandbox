@@ -1,6 +1,6 @@
 //! Closed offline profile preparation for pinned nono 0.80.0 (#75).
 //! Linux denies cannot override ancestor grants; separation is checked first.
-use crate::{NonoArgs, NonoError, RunArgs, RunMode, args::validate_path};
+use crate::{NonoArgs, NonoError, RunArgs, RunMode, args::validate_path, launch::LaunchBinding};
 use camino::{Utf8Path, Utf8PathBuf};
 use qn_core::RunSpec;
 use qn_infra::process::CmdSpec;
@@ -67,50 +67,12 @@ impl PreparedProfile {
             "qn/codex" => ("qn-codex", ".codex"),
             _ => return Err(NonoError::UnsupportedProfile),
         };
-        let workdir = directory(spec.workdir())?;
-        let control = directory(&paths.control_root)?;
-        let binary = canonical(&paths.engine_binary)?;
-        if !fs::metadata(&binary).map_err(io_error)?.is_file() {
-            return Err(NonoError::InvalidArgument {
-                field: "engine executable",
-            });
-        }
-        protect(&workdir, &control)?;
-        protect(&workdir, &binary)?;
-        protect(
-            &workdir,
-            &canonical(&utf8(std::env::current_exe().map_err(io_error)?)?)?,
-        )?;
-        if paths.host_homes.is_empty() {
-            return Err(NonoError::InvalidArgument {
-                field: "host homes",
-            });
-        }
-        for home in &paths.host_homes {
-            let home = directory(home)?;
-            if ancestor(&workdir, &home)? {
-                return Err(NonoError::UnsafeWorkdir);
-            }
-            for name in PROTECTED_HOME_PATHS {
-                protect(&workdir, &home.join(name))?;
-            }
-        }
-        if paths.tool_dirs.is_empty() {
-            return Err(NonoError::InvalidArgument {
-                field: "tool search path",
-            });
-        }
-        for path in &paths.tool_dirs {
-            validate_path(path, "tool search directory")?;
-        }
-        let tool_path = std::env::join_paths(&paths.tool_dirs)
-            .map_err(|_| NonoError::InvalidArgument {
-                field: "tool search path",
-            })?
-            .into_string()
-            .map_err(|_| NonoError::InvalidArgument {
-                field: "tool search path",
-            })?;
+        let Layout {
+            workdir,
+            control,
+            binary,
+            tool_path,
+        } = layout(&spec, paths)?;
         let temporary = tempfile::Builder::new()
             .prefix(&format!("{}-", spec.id()))
             .permissions(fs::metadata(&control).map_err(io_error)?.permissions())
@@ -161,23 +123,200 @@ impl PreparedProfile {
         Ok(self.command(&NonoArgs::run(args)?))
     }
     fn command(&self, args: &NonoArgs) -> CmdSpec {
-        let mut command = CmdSpec::new(self.binary.as_str())
-            .args(args.as_slice().iter().cloned())
-            .env_clear()
-            .env("PATH", &self.tool_path)
-            .env("LANG", "C")
-            .cwd(self.workdir.clone());
-        for (key, dir) in [
-            ("HOME", "home"),
-            ("XDG_CONFIG_HOME", "config"),
-            ("XDG_STATE_HOME", "state"),
-            ("XDG_CACHE_HOME", "cache"),
-            ("TMPDIR", "tmp"),
-        ] {
-            command = command.env(key, self.root.join(dir).as_str());
-        }
-        command
+        apply_environment(
+            CmdSpec::new(self.binary.as_str())
+                .args(args.as_slice().iter().cloned())
+                .env_clear(),
+            &self.root,
+            &self.workdir,
+            &self.tool_path,
+        )
     }
+}
+
+/// One persistent runtime layout for an official online profile.
+///
+/// The caller owns the root and keeps it alive for the session/audit lifetime.
+/// Preparation validates the same physical separation as the offline profile.
+pub struct PreparedOfficial {
+    root: Utf8PathBuf,
+    spec: RunSpec,
+    workdir: Utf8PathBuf,
+    binary: Utf8PathBuf,
+    tool_path: String,
+    state_dir: String,
+}
+impl fmt::Debug for PreparedOfficial {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PreparedOfficial")
+            .field("id", &self.spec.id())
+            .finish_non_exhaustive()
+    }
+}
+impl PreparedOfficial {
+    /// Write a validated official asset into a caller-owned private runtime root.
+    ///
+    /// The root must be absolute and outside the project; it is created if needed.
+    /// The asset is expected to have passed the pinned engine validator already.
+    /// # Errors
+    /// Rejects invalid paths, physical overlap, an empty asset and I/O failure.
+    pub fn prepare(
+        spec: RunSpec,
+        paths: &RuntimePaths,
+        root: Utf8PathBuf,
+        asset: &str,
+        state_dir: &str,
+    ) -> Result<Self, NonoError> {
+        if !root.is_absolute()
+            || root.as_str().contains('\0')
+            || asset.is_empty()
+            || state_dir.is_empty()
+        {
+            return Err(NonoError::InvalidArgument {
+                field: "official profile layout",
+            });
+        }
+        let Layout {
+            workdir,
+            binary,
+            tool_path,
+            ..
+        } = layout(&spec, paths)?;
+        protect(&workdir, &root)?;
+        fs::create_dir_all(&root).map_err(io_error)?;
+        write_official_layout(&root, state_dir, asset)?;
+        Ok(Self {
+            root,
+            spec,
+            workdir,
+            binary,
+            tool_path,
+            state_dir: state_dir.to_owned(),
+        })
+    }
+    /// Private host-side session root.
+    #[must_use]
+    pub fn root(&self) -> &Utf8Path {
+        &self.root
+    }
+    /// Directory name for the application state under the isolated home.
+    #[must_use]
+    pub fn state_dir(&self) -> &str {
+        &self.state_dir
+    }
+    /// Path to the official policy asset.
+    #[must_use]
+    pub fn profile_path(&self) -> Utf8PathBuf {
+        self.root.join("profile.json")
+    }
+    /// Build a foreground command with the predetermined native identity.
+    ///
+    /// The child inherits the terminal so an interactive Agent can render. The
+    /// grant is not encoded in argv; the broker checks it per request.
+    /// # Errors
+    /// Rejects identity drift and invalid native argument construction.
+    pub fn bound_run_command(&self, binding: &LaunchBinding) -> Result<CmdSpec, NonoError> {
+        let mut args = RunArgs::from_spec(&self.spec, self.profile_path(), RunMode::Foreground);
+        args.workdir = self.workdir.clone();
+        let command = binding.command(&self.binary, args)?;
+        Ok(
+            apply_environment(command, &self.root, &self.workdir, &self.tool_path)
+                .timeout(std::time::Duration::from_secs(24 * 60 * 60))
+                .inherit_stdio(),
+        )
+    }
+}
+
+struct Layout {
+    workdir: Utf8PathBuf,
+    control: Utf8PathBuf,
+    binary: Utf8PathBuf,
+    tool_path: String,
+}
+
+fn layout(spec: &RunSpec, paths: &RuntimePaths) -> Result<Layout, NonoError> {
+    let workdir = directory(spec.workdir())?;
+    let control = directory(&paths.control_root)?;
+    let binary = canonical(&paths.engine_binary)?;
+    if !fs::metadata(&binary).map_err(io_error)?.is_file() {
+        return Err(NonoError::InvalidArgument {
+            field: "engine executable",
+        });
+    }
+    protect(&workdir, &control)?;
+    protect(&workdir, &binary)?;
+    protect(
+        &workdir,
+        &canonical(&utf8(std::env::current_exe().map_err(io_error)?)?)?,
+    )?;
+    if paths.host_homes.is_empty() {
+        return Err(NonoError::InvalidArgument {
+            field: "host homes",
+        });
+    }
+    for home in &paths.host_homes {
+        let home = directory(home)?;
+        if ancestor(&workdir, &home)? {
+            return Err(NonoError::UnsafeWorkdir);
+        }
+        for name in PROTECTED_HOME_PATHS {
+            protect(&workdir, &home.join(name))?;
+        }
+    }
+    if paths.tool_dirs.is_empty() {
+        return Err(NonoError::InvalidArgument {
+            field: "tool search path",
+        });
+    }
+    for path in &paths.tool_dirs {
+        validate_path(path, "tool search directory")?;
+    }
+    let tool_path = std::env::join_paths(&paths.tool_dirs)
+        .map_err(|_| NonoError::InvalidArgument {
+            field: "tool search path",
+        })?
+        .into_string()
+        .map_err(|_| NonoError::InvalidArgument {
+            field: "tool search path",
+        })?;
+    Ok(Layout {
+        workdir,
+        control,
+        binary,
+        tool_path,
+    })
+}
+
+fn apply_environment(
+    mut command: CmdSpec,
+    root: &Utf8Path,
+    workdir: &Utf8Path,
+    tool_path: &str,
+) -> CmdSpec {
+    command = command
+        .env("PATH", tool_path)
+        .env("LANG", "C")
+        .cwd(workdir.to_owned());
+    for (key, dir) in [
+        ("HOME", "home"),
+        ("XDG_CONFIG_HOME", "config"),
+        ("XDG_STATE_HOME", "state"),
+        ("XDG_CACHE_HOME", "cache"),
+        ("TMPDIR", "tmp"),
+    ] {
+        command = command.env(key, root.join(dir).as_str());
+    }
+    command
+}
+
+fn write_official_layout(root: &Utf8Path, state_dir: &str, asset: &str) -> Result<(), NonoError> {
+    for dir in ["home", "config", "state", "cache", "tmp"] {
+        fs::create_dir_all(root.join(dir)).map_err(io_error)?;
+    }
+    for dir in [state_dir, ".config", ".cache", ".local/state", "tmp"] {
+        fs::create_dir_all(root.join("home").join(dir)).map_err(io_error)?;
+    }
+    fs::write(root.join("profile.json"), asset).map_err(io_error)
 }
 fn write_layout(
     root: &Utf8Path,

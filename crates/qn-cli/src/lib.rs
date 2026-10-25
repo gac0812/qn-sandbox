@@ -12,6 +12,7 @@ use qn_config::paths::QnPaths;
 
 mod audit;
 mod profile;
+mod session;
 mod setup;
 pub use audit::{AuditCommand, AuditFilter, AuditType};
 pub use profile::ProfileCommand;
@@ -51,6 +52,31 @@ pub enum Command {
         #[command(subcommand)]
         command: ProfileCommand,
     },
+    /// Run one official profile in the foreground.
+    Run {
+        /// Canonical managed profile identity, for example `qn/claude-code`.
+        #[arg(long)]
+        profile: String,
+        /// Executable and arguments after `--`.
+        #[arg(last = true, required = true)]
+        command: Vec<String>,
+    },
+    /// Show the owner record and any live native observation for a session.
+    Status {
+        /// Canonical qn session identifier.
+        session: String,
+    },
+    /// Ask the native engine to stop a recorded session.
+    Stop {
+        /// Canonical qn session identifier.
+        session: String,
+        /// Request immediate force-stop instead of graceful termination.
+        #[arg(long)]
+        force: bool,
+        /// Grace period in whole seconds (1-300); ignored with --force.
+        #[arg(long, default_value_t = 10)]
+        timeout: u64,
+    },
 }
 
 /// Errors surfaced by CLI command execution.
@@ -69,6 +95,9 @@ pub enum Error {
     /// Profile catalog or host registry refused the operation.
     #[error(transparent)]
     Profile(#[from] qn_core::profile::ProfileError),
+    /// Owned foreground session operation failed.
+    #[error(transparent)]
+    Session(#[from] qn_core::runtime::SessionError),
     /// Follow detected an observed prefix rewrite or truncation.
     #[error("audit source changed; retain evidence and inspect its writer")]
     AuditChanged,
@@ -98,6 +127,16 @@ pub enum Error {
     /// The local runtime required by an owned operation could not start.
     #[error("failed to start the local operation runtime: {0}")]
     Runtime(#[source] std::io::Error),
+
+    /// The current directory is unavailable or not UTF-8.
+    #[error(
+        "current directory is unavailable or not UTF-8; run from a dedicated project directory"
+    )]
+    Workdir,
+
+    /// A graceful stop timeout is outside the supported whole-second range.
+    #[error("invalid stop timeout; use a whole number of seconds from 1 to 300")]
+    InvalidStopTimeout,
 }
 
 /// Executes one parsed CLI command and writes its user-facing output.
@@ -117,6 +156,13 @@ pub fn run(cli: &Cli, output: &mut dyn Write) -> Result<(), Error> {
         Command::Audit { command } => audit::run(command, output),
         Command::Doctor { json, config_only } => doctor(output, *json, *config_only),
         Command::Profile { command } => profile::run(command, output),
+        Command::Run { profile, command } => session::run(profile, command.clone(), output),
+        Command::Status { session: id } => session::status(id, output),
+        Command::Stop {
+            session: id,
+            force,
+            timeout,
+        } => session::stop(id, *force, *timeout, output),
     }
 }
 

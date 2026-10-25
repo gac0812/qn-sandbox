@@ -12,6 +12,8 @@ pub mod mcp;
 pub mod native_audit;
 /// Versioned official-profile catalog and installed-registry contracts.
 pub mod profile;
+/// Owned foreground session observations without a cleanup-success claim.
+pub mod runtime;
 /// Managed engine installation and inspection contracts.
 pub mod setup;
 
