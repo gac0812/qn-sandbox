@@ -301,10 +301,67 @@ fn is_snake_case(name: &str) -> bool {
 }
 
 fn reject_credential_fields(value: &serde_json::Value, path: &str) -> Result<(), CatalogError> {
+    if let Some(properties) = value
+        .get("properties")
+        .and_then(serde_json::Value::as_object)
+    {
+        for (name, child) in properties {
+            let current = if path.is_empty() {
+                name.clone()
+            } else {
+                format!("{path}.{name}")
+            };
+            if is_credential_field(name) {
+                return Err(CatalogError::CredentialField(current));
+            }
+            reject_credential_fields(child, &current)?;
+        }
+    }
+    if let Some(object) = value.as_object() {
+        for (name, child) in object {
+            if [
+                "properties",
+                "items",
+                "oneOf",
+                "anyOf",
+                "allOf",
+                "type",
+                "required",
+                "additionalProperties",
+            ]
+            .contains(&name.as_str())
+            {
+                continue;
+            }
+            let current = if path.is_empty() {
+                name.clone()
+            } else {
+                format!("{path}.{name}")
+            };
+            if is_credential_field(name) {
+                return Err(CatalogError::CredentialField(current));
+            }
+            reject_credential_fields(child, &current)?;
+        }
+    }
     if let Some(items) = value.get("items") {
         reject_credential_fields(items, &format!("{path}[]"))?;
     }
+    for key in ["oneOf", "anyOf", "allOf"] {
+        if let Some(branches) = value.get(key).and_then(serde_json::Value::as_array) {
+            for (index, branch) in branches.iter().enumerate() {
+                reject_credential_fields(branch, &format!("{path}.{key}[{index}]"))?;
+            }
+        }
+    }
     Ok(())
+}
+
+fn is_credential_field(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "api_key" | "apikey" | "password" | "secret" | "token" | "access_token" | "refresh_token"
+    )
 }
 
 #[cfg(test)]
@@ -350,6 +407,8 @@ mod tests {
         assert!(is_snake_case("session_run"));
         assert!(!is_snake_case("SessionRun"));
         assert!(!is_snake_case("session__run"));
+        let safe = ToolCatalog::standard();
+        assert!(safe.validate().is_ok());
     }
 }
 
