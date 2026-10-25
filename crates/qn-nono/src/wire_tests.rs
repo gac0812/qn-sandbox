@@ -12,6 +12,8 @@ fn output(text: &str) -> CmdOutcome {
         success: true,
         stdout: text.into(),
         stderr: text.into(),
+        stdout_raw: text.as_bytes().to_vec(),
+        stderr_raw: text.as_bytes().to_vec(),
         stdout_truncated: false,
         stderr_truncated: false,
         duration: Duration::ZERO,
