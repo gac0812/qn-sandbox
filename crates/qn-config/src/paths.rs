@@ -92,8 +92,15 @@ impl QnPaths {
     ///
     /// # Errors
     ///
-    /// 见 [`QnPaths::resolve_with`]。
+    /// 见 [`QnPaths::resolve_with`]；若 `QN_HOME` 存在但不是合法 UTF-8，
+    /// 返回 [`crate::Error::EnvironmentNotUnicode`]。
     pub fn resolve() -> Result<Self, crate::Error> {
-        Self::resolve_with(std::env::var(QN_HOME_ENV).ok())
+        match std::env::var(QN_HOME_ENV) {
+            Ok(home) => Self::resolve_with(Some(home)),
+            Err(std::env::VarError::NotPresent) => Self::resolve_with(None),
+            Err(std::env::VarError::NotUnicode(_)) => {
+                Err(crate::Error::EnvironmentNotUnicode { name: QN_HOME_ENV })
+            }
+        }
     }
 }

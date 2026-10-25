@@ -57,7 +57,7 @@ M1 执行边界已按 [#14](https://github.com/gac0812/qn-sandbox/issues/14) /
 | `qn-vm`（P2 占位） | 强隔离模式：VZ/QEMU VM + guest 内 nono | P0/P1 期间任何实现代码 |
 | `sdks/typescript` `sdks/python` | 契约生成 + 薄人体工学层（M3） | 手写平行类型 |
 
-## 3. 依赖方向（强制，CI 用 cargo-deny ban 校验）
+## 3. 依赖方向（强制，CI architecture 校验）
 
 ```
 qn-cli / qn-ui / qn-mcp / qn-daemon ──► qn-core ◄── qn-nono / qn-broker / qn-gateway / qn-wsl
@@ -70,6 +70,25 @@ qn-nono / qn-wsl ──► 外部：nono 二进制、wsl.exe（经 qn-infra::pro
   适配器互不依赖（公共逻辑下沉 core/infra）；无环 DAG。
 - **引擎可替换**是硬要求：`qn-nono` 是唯一驱动 nono CLI 的 crate；
   P2 的 qn-vm 将实现同一 port 实现强隔离模式切换。
+
+### 3.1 自动门禁（#132）
+
+`python3 scripts/check_architecture.py` 使用 Cargo metadata 检查所有 workspace
+成员的声明依赖，不按宿主平台或 feature 过滤；普通、dev、build、optional、平台条件
+依赖均服从同一边界。重命名和 workspace 继承按 Cargo 解析后的真实包名与路径检查。
+
+| 来源 | 允许依赖的内部 crate |
+| --- | --- |
+| `qn-config` / `qn-infra` | 基础层中的另一个 crate |
+| `qn-core` | `qn-config`、`qn-infra` |
+| 适配器 `qn-nono/broker/gateway/wsl/vm` | `qn-core`、基础层 |
+| `qn-bootstrap` | `qn-core`、适配器、基础层 |
+| `qn-cli` / `qn-daemon` | `qn-core`、`qn-bootstrap`、基础层 |
+| `qn-ui` / `qn-mcp` | `qn-core`、基础层 |
+
+新 workspace crate 必须显式归类；`qn-` 内部依赖必须来自对应 workspace 路径。
+第三方依赖仍由 cargo-deny 检查。门禁检查依赖声明，不证明 Rust 源码/外部进程调用
+满足安全边界，也不代替代码审查。策略修改须同步本节与检查器测试。
 
 ## 4. Ports（core 中的关键 trait）
 
@@ -122,6 +141,7 @@ B/C 的个人审批不作已取得处理。采用 #14 的选项 2：领域模型
 
 `AuditLog` 在总图中表示审计能力方向，待具体事件写入/读取使用方确定后再引入 port；
 不为补齐图示而添加无使用方接口。生产 provider 后端与进程清理机制必须经锁版实测再启用。
+
 受管进程（#65）由 infra 暴露 `ProcessPolicy` 与拥有子进程/读任务的句柄，bootstrap 装配
 Unix 进程组或 Windows Job Object。取消/超时先终止再回收；父进程已回收且无稳定组句柄时
 拒绝用数字 PID/PGID 补杀，返回清理未确认。该机制不声称限制主动脱离进程组的后代。
@@ -130,7 +150,31 @@ Unix 进程组或 Windows Job Object。取消/超时先终止再回收；父进�
 #46 的零缓存撤销 → 按请求检查 grant；#48 的 stderr 歧义 → 显式证据来源与完整性。
 这些前期实测不是完整 Agent、broker 或跨平台 E2E 的完成证明。
 
-### 4.2 MCP HTTP 路由规划（#122 / #123）
+宿主 capture 传输（[#96](https://github.com/gac0812/qn-sandbox/issues/96)）采用 snow 的标准
+Noise NNpsk0/25519/ChaChaPoly/SHA256，PSK 仅在宿主私有 binding；grant 句柄不作认证。
+请求及秘密响应均认证加密，consumer 仍负责会话/精确作用域与准入时撤销检查。
+该 broker 内部传输不新增 core Port，不代表生产 provider、审计或 WSL 桥已完成。
+
+### 4.2 首个审计查询消费者（#110）
+
+本地集成中 CLI 的 audit show/list --session 经 bootstrap 装配 core AuditQuery；qn-broker 实现固定会话
+文件的有界读取。core 只包含封闭呈现类型和查询接口，不依赖 adapter/文件系统。日志源明确
+为 broker、完整性 unverified；区分 empty/open/partial/observed_closed，关闭事件不证明
+沙箱 Stopped、完整送达或防篡改。未知字段、重复字段、错会话、序号缺失/倒退均拒绝；
+只允许尾部未完成行作为 partial 展示。native/fs 拒绝不从 broker 推断，跨源顺序与 follow
+待真实消费者实现。沿用 #14/#47 用户委托授权，不声称 B/C 个人审批；决定见 #110。
+
+### 4.3 引擎安装与诊断契约（#114/#117）
+
+按 #14/#47 用户委托，由已本地验证的 install/doctor 消费者推动最小 EngineSetup port：
+`run(SetupOperation::{Install,Inspect}) -> SetupFuture`；future 输出
+`Result<EngineInstallation,SetupError>`。core 仅承载 std/camino 类型，不依赖 adapter 或运行时。
+Install 显式下载/修复；Inspect 不下载/修复，须先验证完整性再运行版本探测。
+成功只证明托管引擎字节/版本，不证明隔离、凭证、完整执行树清理或 WSL 就绪。
+调用方等待操作完成，丢弃 future 不保证阻塞 IO 取消；adapter 脱敏全部公开错误链，
+surface 转义路径控制字符。#117 仅发布契约，bootstrap/CLI/adapter 接线另见 #114。
+
+### 4.4 MCP HTTP 路由规划（#122 / #123）
 
 core `McpRouting` 定义宿主路由规划，`qn-gateway::HttpMcpRouting` 实现规范端点校验。
 契约源自 #122 本地集成中的 CLI 与原生 MCP 测试消费者；本切片仅发布规划能力，

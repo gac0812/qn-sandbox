@@ -10,11 +10,17 @@ qn-infra = { path = "../qn-infra", version = "0.1.0" }
 process-wrap = { version = "8.2.2", default-features = false, features = ["tokio1", "kill-on-drop", "process-group", "job-object"] }
 
 [dev-dependencies]
+qn-broker = { path = "../qn-broker", version = "0.1.0" }
+tracing = "0.1"
 tokio = { version = "1", features = ["rt", "macros", "net", "io-util", "time"] }
 tokio-util = "0.7"
 
 [[test]]
 name = "managed_process"
+harness = false
+
+[[test]]
+name = "host_provider"
 harness = false
 
 [lints]

@@ -121,6 +121,29 @@ impl NonoArgs {
     /// # example().unwrap();
     /// ```
     pub fn run(input: RunArgs) -> Result<Self, NonoError> {
+        Self::run_at_port(input, None)
+    }
+
+    /// Use an approved nonzero native proxy port matching managed Agent configuration.
+    /// nono 0.80.0 exposes --proxy-port; binding failure must refuse startup (#137).
+    /// This sets the native listener's bind port and grants no additional network access.
+    ///
+    /// ```no_run
+    /// # fn example(input: qn_nono::RunArgs, port: std::num::NonZeroU16) -> Result<(), qn_nono::NonoError> {
+    /// let args = qn_nono::NonoArgs::run_with_proxy_port(input, port)?;
+    /// assert!(args.as_slice().iter().any(|arg| arg == "--proxy-port"));
+    /// # Ok(()) }
+    /// ```
+    /// # Errors
+    /// Applies all validation from the ordinary run constructor.
+    pub fn run_with_proxy_port(
+        input: RunArgs,
+        port: std::num::NonZeroU16,
+    ) -> Result<Self, NonoError> {
+        Self::run_at_port(input, Some(port))
+    }
+
+    fn run_at_port(input: RunArgs, port: Option<std::num::NonZeroU16>) -> Result<Self, NonoError> {
         validate_path(&input.profile, "profile path")?;
         validate_path(&input.workdir, "workdir")?;
         if input.command.first().is_none_or(String::is_empty)
@@ -140,6 +163,9 @@ impl NonoArgs {
         ];
         if input.mode == RunMode::Detached {
             args.push("--detached".into());
+        }
+        if let Some(port) = port {
+            args.extend(["--proxy-port".into(), port.to_string()]);
         }
         args.push("--".into());
         args.extend(input.command);
@@ -237,6 +263,38 @@ mod tests {
             &args.as_slice()[8..],
             ["--detached", "--", "agent", "--version"]
         );
+    }
+
+    #[test]
+    fn it_places_only_the_approved_proxy_port_before_the_child_delimiter() {
+        let mut request = input();
+        request
+            .command
+            .extend(["--proxy-port".into(), "4321".into()]);
+        let command = request.command.clone();
+        let args = NonoArgs::run_with_proxy_port(request, std::num::NonZeroU16::new(1234).unwrap())
+            .unwrap();
+        assert_eq!(&args.as_slice()[8..11], ["--proxy-port", "1234", "--"]);
+        assert_eq!(&args.as_slice()[11..], command);
+        assert!(!format!("{args:?}").contains("1234"));
+    }
+
+    #[test]
+    fn it_preserves_validation_with_a_fixed_proxy_port() {
+        let port = std::num::NonZeroU16::new(u16::MAX).unwrap();
+        assert!(std::num::NonZeroU16::new(0).is_none());
+        for field in ["profile", "workdir", "empty_command", "nul_argument"] {
+            let mut request = input();
+            match field {
+                "profile" => request.profile = "relative.json".into(),
+                "workdir" => request.workdir = "relative".into(),
+                "empty_command" => request.command.clear(),
+                _ => request.command.push(String::from(char::from(0))),
+            }
+            assert!(NonoArgs::run_with_proxy_port(request, port).is_err());
+        }
+        let args = NonoArgs::run_with_proxy_port(input(), port).unwrap();
+        assert_eq!(&args.as_slice()[8..11], ["--proxy-port", "65535", "--"]);
     }
 
     #[test]

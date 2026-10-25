@@ -28,7 +28,10 @@ pub mod args;
 pub mod audit;
 pub mod error;
 pub mod installer;
+pub mod launch;
 pub mod manifest;
+pub mod profile;
+pub mod session;
 pub mod target;
 pub mod version;
 
