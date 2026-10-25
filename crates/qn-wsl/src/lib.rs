@@ -1,7 +1,7 @@
 //! qn-wsl：Windows 供给链路适配器（spec 01 §2；R6 允许 `#[cfg(target_os)]` 的位置）。
 //!
-//! Windows 模块：[`health`] 五项平台探测（#74/#76）；[`distro`] 受管发行版幂等供给（#85）；
-//! [`bootstrap`] 发行版内 nono 引导（#126）。kernel 升级等 #17 裁决。
+//! Windows 模块：`health` 五项平台探测（#74/#76）；`distro` 受管发行版幂等供给（#85）；
+//! `bootstrap` 发行版内 nono 引导（#126）。kernel 升级等 #17 裁决。
 
 #![cfg(target_os = "windows")]
 
