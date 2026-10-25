@@ -1,0 +1,70 @@
+{
+  "$schema": "https://nono.sh/schemas/nono-profile.schema.json",
+  "meta": {
+    "name": "qn-claude-deepseek",
+    "version": "1.0.0",
+    "description": "Test-only qn profile for Claude Code through DeepSeek's Anthropic-compatible endpoint. The real token stays in a host-side file and the child sees only a phantom.",
+    "author": "qn-sandbox"
+  },
+  "extends": "default",
+  "groups": {
+    "include": [
+      "user_tools",
+      "homebrew_macos",
+      "system_read_macos",
+      "system_write_macos",
+      "node_runtime"
+    ]
+  },
+  "filesystem": {
+    "allow": [
+      "$WORKDIR",
+      "$HOME"
+    ]
+  },
+  "workdir": {
+    "access": "readwrite"
+  },
+  "environment": {
+    "allow_vars": [
+      "PATH",
+      "HOME",
+      "LANG",
+      "LC_ALL",
+      "TERM",
+      "TMPDIR",
+      "XDG_CONFIG_HOME",
+      "XDG_STATE_HOME",
+      "XDG_CACHE_HOME"
+    ],
+    "set_vars": {
+      "ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic",
+      "ANTHROPIC_MODEL": "deepseek-flash[1M]",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL": "deepseek-flash[1M]",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL": "deepseek-flash[1M]",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "deepseek-flash",
+      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+      "CLAUDE_CODE_ALLOW_OTHER_MODELS": "1",
+      "CLAUDE_CONFIG_DIR": "$HOME/.claude",
+      "TERM": "dumb"
+    }
+  },
+  "network": {
+    "allow_domain": [
+      "api.deepseek.com"
+    ],
+    "custom_credentials": {
+      "deepseek": {
+        "upstream": "https://api.deepseek.com",
+        "credential_key": "file://TOKEN_PATH",
+        "inject_header": "Authorization",
+        "credential_format": "Bearer {}",
+        "env_var": "ANTHROPIC_AUTH_TOKEN"
+      }
+    },
+    "credentials": [
+      "deepseek"
+    ]
+  },
+  "allow_parent_of_protected": true
+}

@@ -216,14 +216,29 @@ impl PreparedOfficial {
     /// # Errors
     /// Rejects identity drift and invalid native argument construction.
     pub fn bound_run_command(&self, binding: &LaunchBinding) -> Result<CmdSpec, NonoError> {
+        self.bound_run_command_with_stdio(binding, qn_infra::process::StdioMode::Inherited)
+    }
+
+    /// Build the same bound command with an explicit stdio mode.
+    ///
+    /// Tests use `Captured` to assert bounded output; production callers use
+    /// `Inherited` so an interactive Agent owns the terminal.
+    /// # Errors
+    /// Preserves every identity and argument check of `bound_run_command`.
+    pub fn bound_run_command_with_stdio(
+        &self,
+        binding: &LaunchBinding,
+        stdio: qn_infra::process::StdioMode,
+    ) -> Result<CmdSpec, NonoError> {
         let mut args = RunArgs::from_spec(&self.spec, self.profile_path(), RunMode::Foreground);
         args.workdir = self.workdir.clone();
         let command = binding.command(&self.binary, args)?;
-        Ok(
-            apply_environment(command, &self.root, &self.workdir, &self.tool_path)
-                .timeout(std::time::Duration::from_secs(24 * 60 * 60))
-                .inherit_stdio(),
-        )
+        let mut command = apply_environment(command, &self.root, &self.workdir, &self.tool_path)
+            .timeout(std::time::Duration::from_secs(24 * 60 * 60));
+        if stdio == qn_infra::process::StdioMode::Inherited {
+            command = command.inherit_stdio();
+        }
+        Ok(command)
     }
 }
 
