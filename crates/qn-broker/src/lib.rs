@@ -19,3 +19,6 @@ mod claude_config;
 pub use claude_config::{claude_mcp_template, write_claude_mcp_config};
 mod codex_config;
 pub use codex_config::write_codex_mcp_config;
+
+mod grants;
+pub use grants::{CaptureScope, GrantError, GrantRegistry};
