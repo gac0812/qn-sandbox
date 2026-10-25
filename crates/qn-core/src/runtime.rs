@@ -1,8 +1,10 @@
 //! Owned foreground session observations and cleanup semantics (#93).
 //!
-//! No type in this module can represent a confirmed cleanup. Until the
-//! execution-tree proof exists, every run/stop report carries
-//! `CleanupState::Unconfirmed` and never maps to a core `Stopped` state.
+//! `CleanupState::Confirmed` is a scoped ownership proof: every process that
+//! carried the session's private environment or was observed as a descendant
+//! is gone after a freeze/identity/quiescence check. It is deliberately not a
+//! kernel claim about arbitrary `setsid` descendants that cleared their
+//! inherited environment before the first observation.
 
 use crate::profile::ProfileError;
 use crate::{ProfileRef, SessionId};
@@ -35,12 +37,64 @@ pub enum RunEnd {
     TimedOut,
 }
 
-/// Deliberately has no `Confirmed` variant until #93 supplies a proof.
+/// Result of the session-scoped execution-tree proof (#93).
+///
+/// `Confirmed` means no process carrying the session's private environment
+/// and no observed descendant remained after a bounded freeze/kill/quiescence
+/// sequence. It does not claim visibility into a process that detached and
+/// cleared its inherited environment before first observation.
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CleanupState {
     /// Descendant termination is not proven; do not report `Stopped`.
     Unconfirmed,
+    /// All session-owned processes observed by the reaper are gone.
+    Confirmed,
+}
+
+/// Cleanup state plus how many session-owned processes were terminated.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CleanupOutcome {
+    state: CleanupState,
+    terminated: u32,
+}
+
+impl CleanupOutcome {
+    /// Rebuild an outcome from a persisted record.
+    #[must_use]
+    pub fn new(state: CleanupState, terminated: u32) -> Self {
+        Self { state, terminated }
+    }
+
+    /// Reporting fallback when the execution-tree proof did not complete.
+    #[must_use]
+    pub fn unconfirmed() -> Self {
+        Self {
+            state: CleanupState::Unconfirmed,
+            terminated: 0,
+        }
+    }
+
+    /// A completed proof that terminated `terminated` session-owned processes.
+    #[must_use]
+    pub fn confirmed(terminated: u32) -> Self {
+        Self {
+            state: CleanupState::Confirmed,
+            terminated,
+        }
+    }
+
+    /// Whether the session-scoped proof completed.
+    #[must_use]
+    pub fn state(self) -> CleanupState {
+        self.state
+    }
+
+    /// Number of session-owned processes sent `SIGKILL` after identity checks.
+    #[must_use]
+    pub fn terminated(self) -> u32 {
+        self.terminated
+    }
 }
 
 /// Native observation, separate from the owning runner's phase.
@@ -76,11 +130,11 @@ pub struct RunReport {
     phase: RunPhase,
     end: RunEnd,
     exit_code: Option<i32>,
-    cleanup: CleanupState,
+    cleanup: CleanupOutcome,
 }
 
 impl RunReport {
-    /// Build an exit observation; cleanup is always unconfirmed here.
+    /// Build an exit observation with the reaper's cleanup outcome.
     #[must_use]
     pub fn new(
         session: SessionId,
@@ -89,6 +143,7 @@ impl RunReport {
         phase: RunPhase,
         end: RunEnd,
         exit_code: Option<i32>,
+        cleanup: CleanupOutcome,
     ) -> Self {
         Self {
             session,
@@ -97,7 +152,7 @@ impl RunReport {
             phase,
             end,
             exit_code,
-            cleanup: CleanupState::Unconfirmed,
+            cleanup,
         }
     }
 
@@ -137,9 +192,9 @@ impl RunReport {
         self.exit_code
     }
 
-    /// Always `CleanupState::Unconfirmed` in this release.
+    /// Session-scoped cleanup outcome.
     #[must_use]
-    pub fn cleanup(&self) -> CleanupState {
+    pub fn cleanup(&self) -> CleanupOutcome {
         self.cleanup
     }
 }
@@ -165,7 +220,7 @@ pub struct SessionStatus {
     phase: RunPhase,
     end: Option<RunEnd>,
     exit_code: Option<i32>,
-    cleanup: CleanupState,
+    cleanup: CleanupOutcome,
     native: Option<ObservedNativeState>,
 }
 
@@ -178,6 +233,7 @@ impl SessionStatus {
         phase: RunPhase,
         end: Option<RunEnd>,
         exit_code: Option<i32>,
+        cleanup: CleanupOutcome,
         native: Option<ObservedNativeState>,
     ) -> Self {
         Self {
@@ -186,7 +242,7 @@ impl SessionStatus {
             phase,
             end,
             exit_code,
-            cleanup: CleanupState::Unconfirmed,
+            cleanup,
             native,
         }
     }
@@ -221,9 +277,9 @@ impl SessionStatus {
         self.exit_code
     }
 
-    /// Always `CleanupState::Unconfirmed` in this release.
+    /// Session-scoped cleanup outcome.
     #[must_use]
-    pub fn cleanup(&self) -> CleanupState {
+    pub fn cleanup(&self) -> CleanupOutcome {
         self.cleanup
     }
 
@@ -253,17 +309,17 @@ impl fmt::Debug for SessionStatus {
 pub struct StopReport {
     session: SessionId,
     requested: bool,
-    cleanup: CleanupState,
+    cleanup: CleanupOutcome,
 }
 
 impl StopReport {
-    /// Record that a stop was requested; cleanup stays unconfirmed.
+    /// Record that a stop was requested plus the reaper's cleanup outcome.
     #[must_use]
-    pub fn new(session: SessionId, requested: bool) -> Self {
+    pub fn new(session: SessionId, requested: bool, cleanup: CleanupOutcome) -> Self {
         Self {
             session,
             requested,
-            cleanup: CleanupState::Unconfirmed,
+            cleanup,
         }
     }
 
@@ -279,9 +335,9 @@ impl StopReport {
         self.requested
     }
 
-    /// Always `CleanupState::Unconfirmed` in this release.
+    /// Session-scoped cleanup outcome.
     #[must_use]
-    pub fn cleanup(&self) -> CleanupState {
+    pub fn cleanup(&self) -> CleanupOutcome {
         self.cleanup
     }
 }
@@ -298,9 +354,6 @@ pub enum SessionError {
     /// No record exists for this qn session.
     #[error("session is unknown; check 'qn status <session>' and retain the session ID")]
     UnknownSession,
-    /// The owner already observed an exit; cleanup remains unconfirmed.
-    #[error("session is already observed exited; execution-tree cleanup remains unconfirmed")]
-    AlreadyExited,
     /// The launch request is structurally inconsistent.
     #[error("invalid session request; check the profile and command")]
     InvalidRequest,

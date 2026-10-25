@@ -18,4 +18,5 @@ HTTP 不接受 localhost 等名称，避免回环例外依赖名称解析。复�
 [#122](https://github.com/gac0812/qn-sandbox/issues/122)；该集成不在本切片中。
 
 未完成：bootstrap / CLI 接线、生产注册和存储、Agent 托管配置、stdio、OAuth、
-Windows/WSL 和真实 Agent 验收。#93 整树清理仍阻塞生产 runner。
+Windows/WSL 和真实 Agent 验收。#93 的会话级 reaper 已交付（01 §4.7）；生产 runner 仍受
+其它接线项限制。

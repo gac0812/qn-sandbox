@@ -209,6 +209,16 @@ impl PreparedOfficial {
     pub fn profile_path(&self) -> Utf8PathBuf {
         self.root.join("profile.json")
     }
+    /// Session-private environment entries that mark every descendant.
+    ///
+    /// The values are unique to this runtime root and are inherited across
+    /// `fork`/`exec` and `setsid`. The cleanup reaper uses them only to find
+    /// its own session; they contain no credential and no host path.
+    #[must_use]
+    pub fn cleanup_markers(&self) -> Vec<String> {
+        cleanup_markers(&self.root)
+    }
+
     /// Build a foreground command with the predetermined native identity.
     ///
     /// The child inherits the terminal so an interactive Agent can render. The
@@ -302,6 +312,36 @@ fn layout(spec: &RunSpec, paths: &RuntimePaths) -> Result<Layout, NonoError> {
     })
 }
 
+/// Session-private environment entries used to identify descendants.
+///
+/// These are the same five entries `apply_environment` installs on the managed
+/// engine. The official profiles list all five in `environment.allow_vars`, so
+/// the pinned engine forwards them to the sandboxed child; verified with nono
+/// 0.80.0 by running `/usr/bin/env` under `profiles/claude-code.json`
+/// (2026-10-25: HOME/TMPDIR/XDG_* all matched the runtime root).
+///
+/// Markers contain no credential and no host path, only the session-private
+/// runtime root, which the sandboxed child can already read through `$HOME`.
+#[must_use]
+pub fn cleanup_markers(root: &Utf8Path) -> Vec<String> {
+    session_env(root)
+        .into_iter()
+        .map(|(key, value)| format!("{key}={}", value.as_str()))
+        .collect()
+}
+
+const SESSION_ENV_DIRS: [(&str, &str); 5] = [
+    ("HOME", "home"),
+    ("XDG_CONFIG_HOME", "config"),
+    ("XDG_STATE_HOME", "state"),
+    ("XDG_CACHE_HOME", "cache"),
+    ("TMPDIR", "tmp"),
+];
+
+fn session_env(root: &Utf8Path) -> [(&'static str, Utf8PathBuf); SESSION_ENV_DIRS.len()] {
+    SESSION_ENV_DIRS.map(|(key, dir)| (key, root.join(dir)))
+}
+
 fn apply_environment(
     mut command: CmdSpec,
     root: &Utf8Path,
@@ -312,14 +352,8 @@ fn apply_environment(
         .env("PATH", tool_path)
         .env("LANG", "C")
         .cwd(workdir.to_owned());
-    for (key, dir) in [
-        ("HOME", "home"),
-        ("XDG_CONFIG_HOME", "config"),
-        ("XDG_STATE_HOME", "state"),
-        ("XDG_CACHE_HOME", "cache"),
-        ("TMPDIR", "tmp"),
-    ] {
-        command = command.env(key, root.join(dir).as_str());
+    for (key, value) in session_env(root) {
+        command = command.env(key, value.as_str());
     }
     command
 }

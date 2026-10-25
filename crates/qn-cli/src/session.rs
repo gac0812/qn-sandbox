@@ -3,7 +3,9 @@
 use crate::Error;
 use camino::Utf8PathBuf;
 use qn_core::profile::ProfileRegistry as _;
-use qn_core::runtime::{ObservedNativeState, RunEnd, RunPhase, StopMode};
+use qn_core::runtime::{
+    CleanupOutcome, CleanupState, ObservedNativeState, RunEnd, RunPhase, StopMode,
+};
 use qn_core::{ProfileRef, SessionId};
 use std::{io::Write, time::Duration};
 
@@ -55,10 +57,7 @@ pub(crate) fn run(
             .exit_code()
             .map_or_else(|| "none".to_owned(), |code| code.to_string())
     )?;
-    writeln!(
-        output,
-        "cleanup: unconfirmed (execution-tree cleanup is not proven; see #93)"
-    )?;
+    write_cleanup(output, report.cleanup())?;
     writeln!(
         output,
         "audit: qn audit native {} (network-only)",
@@ -103,10 +102,7 @@ pub(crate) fn status(session: &str, json: bool, output: &mut dyn Write) -> Resul
         "native: {}",
         status.native().map_or("unavailable", native_label)
     )?;
-    writeln!(
-        output,
-        "cleanup: unconfirmed (not Stopped; execution-tree cleanup is not proven; see #93)"
-    )?;
+    write_cleanup(output, status.cleanup())?;
     output.flush()?;
     Ok(())
 }
@@ -146,11 +142,33 @@ pub(crate) fn stop(
     }
     writeln!(output, "session: {}", report.session())?;
     writeln!(output, "stop requested: {}", report.requested())?;
-    writeln!(
-        output,
-        "cleanup: unconfirmed (native stop success is not a cleanup proof; see #93)"
-    )?;
+    write_cleanup(output, report.cleanup())?;
     output.flush()?;
+    Ok(())
+}
+
+fn write_cleanup(output: &mut dyn Write, cleanup: CleanupOutcome) -> Result<(), Error> {
+    match cleanup.state() {
+        CleanupState::Confirmed if cleanup.terminated() == 0 => {
+            writeln!(
+                output,
+                "cleanup: confirmed (no session-owned processes remained)"
+            )?;
+        }
+        CleanupState::Confirmed => {
+            writeln!(
+                output,
+                "cleanup: confirmed ({} session-owned processes terminated)",
+                cleanup.terminated()
+            )?;
+        }
+        CleanupState::Unconfirmed => {
+            writeln!(
+                output,
+                "cleanup: unconfirmed (execution-tree cleanup is not proven; see #93)"
+            )?;
+        }
+    }
     Ok(())
 }
 

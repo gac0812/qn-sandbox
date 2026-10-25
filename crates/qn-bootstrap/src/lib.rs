@@ -2,8 +2,12 @@
 
 use process_wrap::tokio::TokioCommandWrap;
 use qn_core::profile::ProfileRegistry;
+use qn_core::runtime::CleanupOutcome;
 use qn_core::setup::EngineSetup;
 use qn_infra::process::{ProcessPolicy, TerminationSafety};
+
+mod cleanup;
+use cleanup::{SessionCleanup, reap_session};
 
 struct HostProcessPolicy;
 impl ProcessPolicy for HostProcessPolicy {
@@ -203,18 +207,23 @@ struct SessionRecord {
     end: Option<qn_core::runtime::RunEnd>,
     exit_code: Option<i32>,
     cleanup: qn_core::runtime::CleanupState,
+    #[serde(default)]
+    cleanup_terminated: u32,
 }
 
 /// Run one official profile in the foreground and return an exit observation.
 ///
 /// The managed parent inherits the terminal. The engine archive/binary is
 /// verified before execution, a predetermined native identity is reserved, and
-/// the launch-owned audit association is published before spawn. Cleanup is
-/// always reported unconfirmed: the managed parent's exit never proves that
-/// every descendant terminated (#93).
+/// the launch-owned audit association is published before spawn.
+///
+/// Cleanup is proved separately from the parent's exit (#93): a tracker records
+/// descendants, and the reaper freezes, identity-checks and kills every
+/// observed/marker-carrying process before reporting `Confirmed`. If that
+/// bounded proof cannot run, the report stays `Unconfirmed`.
 ///
 /// Cancel the token to request termination; the managed group is stopped and
-/// awaited, but the result remains an unconfirmed-cleanup observation.
+/// awaited, then the same session-scoped reaper runs.
 ///
 /// # Errors
 ///
@@ -226,7 +235,7 @@ pub async fn run_session(
     resolved: &qn_core::profile::ResolvedProfile,
     cancel: tokio_util::sync::CancellationToken,
 ) -> Result<qn_core::runtime::RunReport, qn_core::runtime::SessionError> {
-    use qn_core::runtime::{CleanupState, RunEnd, RunPhase, RunReport, SessionError};
+    use qn_core::runtime::{CleanupOutcome, RunEnd, RunPhase, RunReport, SessionError};
 
     if spec.profile() != resolved.summary().id() {
         return Err(SessionError::InvalidRequest);
@@ -267,8 +276,14 @@ pub async fn run_session(
         .map_err(|error| SessionError::Process(Box::new(error)))?;
     let process = qn_infra::process::spawn_managed(&command, &process_policy())
         .map_err(|error| SessionError::Process(Box::new(error)))?;
+    let root_pid = process.pid().ok_or_else(|| {
+        SessionError::Process(Box::new(std::io::Error::other(
+            "managed process has no owned pid",
+        )))
+    })?;
+    let cleanup = SessionCleanup::start(root_pid, prepared.cleanup_markers());
 
-    let record = |phase, end, exit_code| SessionRecord {
+    let record = |phase, end, exit_code, cleanup: CleanupOutcome| SessionRecord {
         schema_version: 1,
         session_id: spec.id().to_string(),
         profile: spec.profile().as_str().to_owned(),
@@ -277,16 +292,25 @@ pub async fn run_session(
         phase,
         end,
         exit_code,
-        cleanup: CleanupState::Unconfirmed,
+        cleanup: cleanup.state(),
+        cleanup_terminated: cleanup.terminated(),
     };
-    write_record(paths, &record(RunPhase::Running, None, None))?;
+    if let Err(error) = write_record(
+        paths,
+        &record(RunPhase::Running, None, None, CleanupOutcome::unconfirmed()),
+    ) {
+        let _ = finish_cleanup(cleanup).await;
+        return Err(error);
+    }
     let output = match process.wait(cancel).await {
         Ok(output) => output,
         Err(error) => {
-            let _ = write_record(paths, &record(RunPhase::Failed, None, None));
+            let cleanup = finish_cleanup(cleanup).await;
+            let _ = write_record(paths, &record(RunPhase::Failed, None, None, cleanup));
             return Err(SessionError::Process(Box::new(error)));
         }
     };
+    let cleanup = finish_cleanup(cleanup).await;
     let end = match output.end {
         qn_infra::process::ProcessEnd::Exited => RunEnd::Exited,
         qn_infra::process::ProcessEnd::Cancelled => RunEnd::Cancelled,
@@ -301,18 +325,27 @@ pub async fn run_session(
         RunPhase::ExitedObserved,
         end,
         exit_code,
+        cleanup,
     );
     write_record(
         paths,
-        &record(RunPhase::ExitedObserved, Some(end), exit_code),
+        &record(RunPhase::ExitedObserved, Some(end), exit_code, cleanup),
     )?;
     Ok(report)
+}
+
+async fn finish_cleanup(cleanup: SessionCleanup) -> CleanupOutcome {
+    match tokio::task::spawn_blocking(move || cleanup.finish()).await {
+        Ok(outcome) => outcome,
+        Err(_) => CleanupOutcome::unconfirmed(),
+    }
 }
 
 /// Read the persisted owner record and, when available, live native state.
 ///
 /// A missing engine or native query does not hide the owner record. The result
-/// never claims `Stopped` or confirmed cleanup.
+/// carries the persisted reaper outcome; it never claims a core `Stopped`
+/// transition from a native observation.
 ///
 /// # Errors
 ///
@@ -322,7 +355,7 @@ pub async fn status_session(
     paths: &qn_config::paths::QnPaths,
     id: qn_core::SessionId,
 ) -> Result<qn_core::runtime::SessionStatus, qn_core::runtime::SessionError> {
-    use qn_core::runtime::SessionStatus;
+    use qn_core::runtime::{CleanupOutcome, SessionStatus};
 
     let record = read_record(paths, id)?;
     let profile = qn_core::ProfileRef::try_from(record.profile.as_str())
@@ -335,20 +368,23 @@ pub async fn status_session(
         record.phase,
         record.end,
         record.exit_code,
+        CleanupOutcome::new(record.cleanup, record.cleanup_terminated),
         native,
     ))
 }
 
-/// Ask the native engine to stop a recorded session.
+/// Ask the native engine to stop a recorded session, then reap its tree.
 ///
-/// The command uses the predetermined native ID from the owner record, never a
-/// numeric PID or PGID. A completed request is not a cleanup proof; every
-/// report carries unconfirmed cleanup.
+/// The stop request uses the predetermined native ID from the owner record,
+/// never a numeric PID or PGID. An already-exited record skips the native
+/// request but still runs the session-scoped reaper, because a descendant may
+/// have outlived the managed parent. The report is `Confirmed` only when the
+/// reaper's marker/identity/quiescence proof completes.
 ///
 /// # Errors
 ///
-/// Returns [`qn_core::runtime::SessionError`] for unknown/already-exited
-/// sessions, engine failure and native stop failure.
+/// Returns [`qn_core::runtime::SessionError`] for unknown sessions, engine
+/// failure and native stop failure.
 pub async fn stop_session(
     paths: &qn_config::paths::QnPaths,
     id: qn_core::SessionId,
@@ -356,40 +392,58 @@ pub async fn stop_session(
 ) -> Result<qn_core::runtime::StopReport, qn_core::runtime::SessionError> {
     use qn_core::runtime::{RunPhase, SessionError, StopMode, StopReport};
 
-    let record = read_record(paths, id)?;
-    if record.phase == RunPhase::ExitedObserved {
-        return Err(SessionError::AlreadyExited);
-    }
-    let native_id = qn_nono::args::NonoSessionId::try_from(record.native_id.as_str())
-        .map_err(|error| SessionError::Process(Box::new(error)))?;
-    let setup = engine_setup(paths).map_err(|error| SessionError::Engine(Box::new(error)))?;
-    let installation = setup
-        .run(qn_core::setup::SetupOperation::Inspect)
-        .await
-        .map_err(|error| SessionError::Engine(Box::new(error)))?;
-    let native_mode = match mode {
-        StopMode::Graceful { timeout_secs } => qn_nono::args::NonoStopMode::Graceful {
-            timeout: std::time::Duration::from_secs(timeout_secs),
-        },
-        StopMode::Force => qn_nono::args::NonoStopMode::Force,
-    };
-    let args = qn_nono::NonoArgs::stop(&native_id, native_mode)
-        .map_err(|error| SessionError::Process(Box::new(error)))?;
+    let mut record = read_record(paths, id)?;
     let runtime_root = camino::Utf8PathBuf::from(record.runtime_root.as_str());
-    let command = session_environment(
-        qn_infra::process::CmdSpec::new(installation.path.as_str())
-            .args(args.as_slice().iter().cloned())
-            .env_clear()
-            .env("PATH", "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin")
-            .env("LANG", "C"),
-        &runtime_root,
-    )
-    .timeout(std::time::Duration::from_secs(320))
-    .label("nono stop");
-    qn_infra::process::run_checked(&command)
-        .await
-        .map_err(|error| SessionError::Process(Box::new(error)))?;
-    Ok(StopReport::new(id, true))
+    let markers = qn_nono::profile::cleanup_markers(&runtime_root);
+    let requested = record.phase != RunPhase::ExitedObserved;
+
+    if requested {
+        let native_id = qn_nono::args::NonoSessionId::try_from(record.native_id.as_str())
+            .map_err(|error| SessionError::Process(Box::new(error)))?;
+        let setup = engine_setup(paths).map_err(|error| SessionError::Engine(Box::new(error)))?;
+        let installation = setup
+            .run(qn_core::setup::SetupOperation::Inspect)
+            .await
+            .map_err(|error| SessionError::Engine(Box::new(error)))?;
+        let native_mode = match mode {
+            StopMode::Graceful { timeout_secs } => qn_nono::args::NonoStopMode::Graceful {
+                timeout: std::time::Duration::from_secs(timeout_secs),
+            },
+            StopMode::Force => qn_nono::args::NonoStopMode::Force,
+        };
+        let args = qn_nono::NonoArgs::stop(&native_id, native_mode)
+            .map_err(|error| SessionError::Process(Box::new(error)))?;
+        let command = session_environment(
+            qn_infra::process::CmdSpec::new(installation.path.as_str())
+                .args(args.as_slice().iter().cloned())
+                .env_clear()
+                .env("PATH", "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin")
+                .env("LANG", "C"),
+            &runtime_root,
+        )
+        .timeout(std::time::Duration::from_secs(320))
+        .label("nono stop");
+        qn_infra::process::run_checked(&command)
+            .await
+            .map_err(|error| SessionError::Process(Box::new(error)))?;
+    }
+
+    let cleanup = finish_reap(markers).await;
+    // Only the owner that awaited the managed parent writes the phase; a stop
+    // request is not an exit observation. The record is written last so a
+    // concurrent owner write stays authoritative, and a failed write leaves the
+    // pre-stop record rather than a fabricated phase.
+    record.cleanup = cleanup.state();
+    record.cleanup_terminated = cleanup.terminated();
+    let _ = write_record(paths, &record);
+    Ok(StopReport::new(id, requested, cleanup))
+}
+
+async fn finish_reap(markers: Vec<String>) -> CleanupOutcome {
+    match tokio::task::spawn_blocking(move || reap_session(&markers)).await {
+        Ok(outcome) => outcome,
+        Err(_) => CleanupOutcome::unconfirmed(),
+    }
 }
 
 async fn observe_native(

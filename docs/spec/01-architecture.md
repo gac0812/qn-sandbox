@@ -190,7 +190,8 @@ core `McpRouting` 定义宿主路由规划，`qn-gateway::HttpMcpRouting` 实现
 仅接受规范 HTTPS 或数字回环 HTTP；拒绝 userinfo/query/fragment、控制空白、别名、
 百分号路径、反斜线和前导双斜线路径。复用已锁 url 解析器，错误/Debug 不回显输入。
 路由只供可信宿主使用，不是 Agent 配置、注册、授权或存活证明；生产注册、stdio、
-OAuth、Windows 和 #93 整树清理仍待完成。按 #14/#47 委托实施，不声明 B/C 个人审批。
+OAuth、Windows 和 #93 的平台残余仍待完成；会话级 reaper 见 §4.7。
+按 #14/#47 委托实施，不声明 B/C 个人审批。
 
 ### 4.5 原生审计消费者（#121）
 
@@ -200,8 +201,8 @@ NativeAuditQuery 单独承载 native network-only report；不向 broker 单调�
 先校验安装完整性再复用 AuditReader 执行；只输出封闭 decision、原序号、可选 wall time、
 原生总数/exit_code，省略可能携带秘密的 target/path/reason/command。
 CLI audit native 通过 bootstrap 消费；JSON schema_version=1/report，source=nono_audit、
-integrity=unverified、coverage=network_only。宿主目录可信前提、目录持久化责任、#93 整树
-清理限制保持不变。按 #14/#47 委托实施，未声明 B/C 个人审批。
+integrity=unverified、coverage=network_only。宿主目录可信前提与目录持久化责任不变；
+会话清理见 §4.7 的作用域与残余。按 #14/#47 委托实施，未声明 B/C 个人审批。
 
 ### 4.6 官方 profile 与版本化注册表（#75 / #59）
 
@@ -222,7 +223,8 @@ integrity=unverified、coverage=network_only。宿主目录可信前提、目录
 资产语法与引用。`qn profile publish` 只接受编译期官方身份（app state 目录由目录决定），
 读取绝对、限长、普通 UTF-8 文件，先经同一引擎校验，再以显式 MAJOR.MINOR.PATCH 发布并
 切换 `current`；资产 `meta.version` 必须与参数一致，同版本不同字节拒绝，rollback 仍可
-回到上一已验证版本。资产发布不等于在线 Agent 认证 E2E、跨平台验收或 #93 整树清理完成。
+回到上一已验证版本。资产发布不等于在线 Agent 认证 E2E、跨平台验收；#93 的会话级
+reaper 与残余见 §4.7。
 按 #14/#47 委托实施，未声明 B/C 个人审批。
 
 ### 4.7 前台会话运行、状态与停止（#92 / #93）
@@ -235,10 +237,19 @@ profile 资产只含句柄/代理地址，不含凭证明文；grant 仍由 brok
 否则 nono 会拒绝初始化。
 
 `qn status <session>` 读取 owner 记录并可选查询原生 `ps --all` 观察；`qn stop <session>`
-用记录中的预定 native ID 调用锁版 `nono stop`，绝不使用数字 PID/PGID。所有报告只包含
-`cleanup=unconfirmed`；core 没有可表示“已确认清理”的类型，也绝不把父进程退出、`ps` 消失或
-`stop` 返回 0 映射为 core `Stopped`。关闭 stdio 或主动 setsid 脱离的后代仍可能存活，
-这是 #93 的明确限制。Windows/WSL 前台路由尚未接线。
+用记录中的预定 native ID 调用锁版 `nono stop`，绝不使用数字 PID/PGID；对已退出记录也执行
+同样的 reaper，因为后代可能晚于受管父进程退出。
+
+会话清理由 `qn-bootstrap` 的 reaper 单独证明（#93）：以会话私有 HOME/XDG/TMPDIR 路径为
+标记，持续记录受管父进程的后代；收尾时 SIGSTOP 候选、复验 `(pid, start_time)` 身份、
+SIGKILL，并要求连续多轮无标记/无候选才写 `cleanup=confirmed`。父进程退出、`ps` 消失或
+`stop` 返回 0 单独都不构成证明，也不映射为 core `Stopped`。
+
+证明作用域：在首次观察前清空继承环境并脱离（含 `setsid` 后再 `env -i`）的后代不可见；
+macOS 无 subreaper/cgroup，关闭该残余需要 VM 或上游内核边界。该场景明确不在当前证明内，
+不能把 `confirmed` 读作任意进程树的内核级无幸存者证明。身份复验与 `kill(2)` 是两个系统调用
+（macOS 无 `pidfd`），复验后、发送前被回收的 PID 无法识别；之后回收的 PID 均被 start_time
+拒绝。Windows/WSL 前台路由尚未接线（非 unix 构建固定返回 `unconfirmed`）。
 
 ## 5. 数据流（两个代表场景）
 

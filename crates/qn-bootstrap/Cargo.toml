@@ -16,7 +16,12 @@ process-wrap = { version = "8.2.2", default-features = false, features = ["tokio
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tempfile = "3"
+tokio = { version = "1", features = ["rt"] }
 tokio-util = "0.7"
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.30", features = ["signal"] }
+sysinfo = { version = "0.36.1", default-features = false, features = ["system"] }
 
 [dev-dependencies]
 tracing = "0.1"
