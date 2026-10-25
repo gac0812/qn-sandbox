@@ -35,7 +35,9 @@ pub struct AuditFilter {
     pub event_type: Option<AuditType>,
 }
 impl AuditFilter {
-    fn matches(&self, event: &AuditEvent) -> bool {
+    /// Returns whether an event matches the configured display selectors.
+    #[must_use]
+    pub fn matches(&self, event: &AuditEvent) -> bool {
         if self.since.is_some_and(|since| event.wall_millis < since) {
             return false;
         }
