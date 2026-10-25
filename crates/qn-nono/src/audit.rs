@@ -82,7 +82,7 @@ impl AuditReader {
         Ok(record)
     }
 
-    async fn query(
+    pub(crate) async fn query(
         &self,
         args: NonoArgs,
         operation: &'static str,

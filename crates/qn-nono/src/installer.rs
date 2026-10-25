@@ -24,7 +24,7 @@ use crate::target::NonoTarget;
 pub struct InstallOptions {
     /// Caller-provided cache root; the versioned binary lands under
     /// `<install_root>/<version>/nono`. The default root comes from
-    /// `qn-config` once that crate lands its path constants.
+    /// `qn-config` through the composition root.
     pub install_root: PathBuf,
     /// Explicit target override; `None` resolves the current host. Used by
     /// `qn-wsl` to stage the Linux artifact for WSL2 installs.
@@ -73,11 +73,96 @@ pub struct InstalledBinary {
 /// when the archive digest deviates from the manifest, and
 /// [`InstallerError::ArchiveMissingBinary`] / [`InstallerError::Io`] when
 /// unpacking or staging fails.
-// TODO(#14): wire verify_version into the future adapter startup after the
-// shared engine contract is agreed; install stays synchronous and install-only.
+// Installation remains synchronous and install-only; consumers explicitly probe
+// the verified result before treating the executable as usable.
 pub fn install(options: &InstallOptions) -> Result<InstalledBinary, InstallerError> {
     let artifact = resolve_artifact(options)?;
     install_artifact(&options.install_root, artifact)
+}
+
+/// Verify an existing installation against its locked archive without downloading or repairing.
+/// Temporary extraction occurs outside the managed root, and no binary is executed here.
+/// The trusted host root must exclude untrusted concurrent writers; this is not a
+/// defense against same-user replacement between checking and later execution.
+/// # Errors
+/// Refuses missing, symlink/nonregular, corrupt or mismatched files and IO failures.
+///
+/// ```no_run
+/// let options = qn_nono::InstallOptions::new("/absolute/managed/engine-cache");
+/// let installed = qn_nono::installer::verify_installation(&options)?;
+/// assert_eq!(installed.version, qn_nono::LOCKED_NONO_VERSION);
+/// # Ok::<(), qn_nono::InstallerError>(())
+/// ```
+pub fn verify_installation(options: &InstallOptions) -> Result<InstalledBinary, InstallerError> {
+    verify_installed_artifact(&options.install_root, resolve_artifact(options)?)
+}
+
+fn verify_installed_artifact(
+    root: &Path,
+    artifact: &ReleaseArtifact,
+) -> Result<InstalledBinary, InstallerError> {
+    let version_dir = root.join(manifest::LOCKED_NONO_VERSION);
+    let binary_path = version_dir.join("nono");
+    let cache = version_dir.join(artifact.archive_name);
+    for path in [&cache, &binary_path] {
+        let metadata = fs::symlink_metadata(path).map_err(|source| {
+            if source.kind() == io::ErrorKind::NotFound {
+                InstallerError::InstallationIntegrity
+            } else {
+                InstallerError::Io {
+                    step: "checking installed engine metadata",
+                    source,
+                }
+            }
+        })?;
+        if !metadata.is_file() {
+            return Err(InstallerError::InstallationIntegrity);
+        }
+    }
+    let staging = tempfile::tempdir().map_err(|source| InstallerError::Io {
+        step: "creating verification staging directory",
+        source,
+    })?;
+    let snapshot = staging.path().join(artifact.archive_name);
+    fs::copy(cache, &snapshot).map_err(|source| InstallerError::Io {
+        step: "snapshotting archive for verification",
+        source,
+    })?;
+    verify_checksum(&snapshot, artifact)?;
+    let expected = staging.path().join("nono");
+    extract_binary(&snapshot, &expected)?;
+    compare_installed_binary(&expected, &binary_path)?;
+    Ok(InstalledBinary {
+        path: binary_path,
+        version: manifest::LOCKED_NONO_VERSION,
+    })
+}
+
+fn compare_installed_binary(expected: &Path, installed: &Path) -> Result<(), InstallerError> {
+    let compare = || -> io::Result<bool> {
+        let mut expected = File::open(expected)?;
+        let installed = File::open(installed)?;
+        let metadata = installed.metadata()?;
+        let length = expected.metadata()?.len();
+        if !metadata.is_file() || metadata.len() != length {
+            return Ok(false);
+        }
+        let mut expected_hash = Sha256::new();
+        let mut installed_hash = Sha256::new();
+        io::copy(&mut expected, &mut expected_hash)?;
+        let count = io::copy(
+            &mut installed.take(length.saturating_add(1)),
+            &mut installed_hash,
+        )?;
+        Ok(count == length && expected_hash.finalize() == installed_hash.finalize())
+    };
+    if !compare().map_err(|source| InstallerError::Io {
+        step: "comparing installed engine bytes",
+        source,
+    })? {
+        return Err(InstallerError::InstallationIntegrity);
+    }
+    Ok(())
 }
 
 fn install_artifact(
