@@ -663,3 +663,69 @@ mod envelope_tests {
         );
     }
 }
+
+/// Navigation and refresh state for the desktop shell.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct UiNavigation {
+    /// Currently selected view route.
+    pub current: ViewRoute,
+    /// Whether the selected view is waiting for a refresh response.
+    pub refreshing: bool,
+}
+
+impl Default for UiNavigation {
+    fn default() -> Self {
+        Self {
+            current: ViewRoute::Profiles,
+            refreshing: false,
+        }
+    }
+}
+
+impl UiNavigation {
+    /// Selects a view without starting I/O.
+    #[must_use]
+    pub fn select(&self, route: ViewRoute) -> Self {
+        Self {
+            current: route,
+            refreshing: false,
+        }
+    }
+
+    /// Marks the selected view as waiting for a daemon snapshot.
+    #[must_use]
+    pub fn begin_refresh(&self) -> Self {
+        Self {
+            current: self.current,
+            refreshing: true,
+        }
+    }
+
+    /// Marks a refresh response as received.
+    #[must_use]
+    pub fn finish_refresh(&self, route: ViewRoute) -> Self {
+        Self {
+            current: route,
+            refreshing: false,
+        }
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod navigation_tests {
+    use super::*;
+
+    #[test]
+    fn navigation_is_deterministic_and_serializable() {
+        let navigation = UiNavigation::default()
+            .select(ViewRoute::Sessions)
+            .begin_refresh()
+            .finish_refresh(ViewRoute::Sessions);
+        assert_eq!(navigation.current, ViewRoute::Sessions);
+        assert!(!navigation.refreshing);
+        let encoded = serde_json::to_string(&navigation).unwrap();
+        let decoded: UiNavigation = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded, navigation);
+    }
+}
