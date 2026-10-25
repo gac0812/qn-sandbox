@@ -29,7 +29,7 @@ async fn main() -> Result<()> {
         let mut peer = TcpStream::connect(address).await?;
         peer.write_all(b"R").await?;
         let mut command = [0];
-        if peer.read_exact(&mut command).await.is_ok() && command == [b'S'] {
+        if peer.read_exact(&mut command).await.is_ok() && command == *b"S" {
             print!("{SECRET}");
         }
         return Ok(());
@@ -217,7 +217,7 @@ impl Fixture {
             let (mut peer, _) = self.provider_ready.accept().await?;
             let mut ready = [0];
             peer.read_exact(&mut ready).await?;
-            assert_eq!(ready, [b'R']);
+            assert_eq!(ready, *b"R");
             if mode == "race" {
                 self.grant.revoke().await?;
             }
