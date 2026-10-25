@@ -6,6 +6,8 @@ rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
+qn-infra = { path = "../qn-infra", version = "0.1.0" }
+tokio-util = "0.7"
 camino = "1"
 qn-core = { path = "../qn-core", version = "0.1.0" }
 serde = { version = "1", features = ["derive"] }

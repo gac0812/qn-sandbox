@@ -818,9 +818,11 @@ name = "qn-bootstrap"
 version = "0.1.0"
 dependencies = [
  "process-wrap",
+ "qn-broker",
  "qn-infra",
  "tokio",
  "tokio-util",
+ "tracing",
 ]
 
 [[package]]
@@ -830,12 +832,14 @@ dependencies = [
  "camino",
  "getrandom 0.3.4",
  "qn-core",
+ "qn-infra",
  "serde",
  "serde_json",
  "snow",
  "tempfile",
  "thiserror",
  "tokio",
+ "tokio-util",
  "toml",
  "zeroize",
 ]
