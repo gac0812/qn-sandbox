@@ -23,3 +23,7 @@ EngineSetup（#114/#117）由实际 CLI install/doctor 消费者推动；本 PR 
 allowlist hosts and one relative app state directory. Core never parses nono policy
 syntax and never accepts a credential value. Install/rollback are local registry
 operations; they do not launch an engine or widen authorization.
+
+NativeAuditQuery (#121) keeps native network-only reports separate from broker elapsed
+clocks. Closed outcomes/optional source wall times preserve native meaning; raw targets
+and reasons are withheld. Integrity remains unverified; exit_code never proves cleanup.

@@ -71,3 +71,16 @@ pub fn audit_query(
 ) -> Result<impl qn_core::audit::AuditQuery, qn_core::audit::AuditQueryError> {
     qn_broker::audit_query::BrokerAuditQuery::new(root)
 }
+
+/// Compose a retained native query with trusted paths and the host process policy.
+/// # Errors
+/// Rejects invalid roots and hosts requiring the WSL engine installation route.
+pub fn native_audit_query(
+    paths: &qn_config::paths::QnPaths,
+) -> Result<impl qn_core::native_audit::NativeAuditQuery, qn_core::native_audit::NativeAuditError> {
+    qn_nono::native_audit::ManagedNativeAudit::new(
+        paths.audit.clone(),
+        &paths.engine_cache(),
+        std::sync::Arc::new(process_policy()),
+    )
+}

@@ -8,6 +8,8 @@ pub mod domain;
 pub mod error;
 /// Host-only MCP route planning contract.
 pub mod mcp;
+/// Retained native network-audit query contract.
+pub mod native_audit;
 /// Versioned official-profile catalog and installed-registry contracts.
 pub mod profile;
 /// Managed engine installation and inspection contracts.

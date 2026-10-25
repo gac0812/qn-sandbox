@@ -100,3 +100,32 @@ proxy allowlist. `install` copies the compiled version into `QN_HOME/profiles` a
 it; `rollback` selects the previous verified version. JSON uses schema_version=1.
 Installed assets are checked against their SHA-256 on every resolve. These commands do not
 start an engine, resolve a credential or prove sandbox/production readiness.
+
+## Broker audit commands (#110 / #120)
+
+    qn audit show sxn-<canonical-uuid-v7> --json
+    qn audit list --session sxn-<canonical-uuid-v7> --type denial --since 0
+    qn audit follow --session sxn-<canonical-uuid-v7> --type grant --json
+
+Reads QN_HOME/audit/<session>.broker.jsonl through core/bootstrap. JSON retains
+schema_version=1 and timeline, including source/integrity/state. Filters apply only after
+full validation. Follow emits new matching records, detects observed prefix changes and
+stops at closure or Ctrl-C. Missing, partial and corrupt evidence remain distinct.
+No cross-session ordering, native filesystem denial inference or authenticated provenance.
+
+Default doctor JSON adds an engine object (name, version, terminal-safe binary,
+runtime_checks=not_checked). Configuration-only JSON omits this object and retains
+the original schema_version=1 fields and values.
+
+The denial filter includes denied and denied_after_revoke. The latter is emitted
+only from retained exact unexpired broker evidence; old generic journals remain readable.
+
+## Retained native audit (#121)
+
+    qn audit native sxn-<canonical-uuid-v7> --json
+
+Resolves the launch-owned association, verifies engine integrity and queries the exact
+native record. JSON is schema_version=1 with report (source=nono_audit,
+integrity=unverified, coverage=network_only). No raw target/path/command/reason text is
+printed. A missing association or record fails; neither zero events nor a successful
+exit proves filesystem coverage, complete cleanup or authorization.

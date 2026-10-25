@@ -7,3 +7,6 @@ Windows 测试显式保留非敏感 `SystemRoot` 以支持系统 DLL/网络初�
 
 engine_setup(&QnPaths) 装配 qn-nono 的 core EngineSetup 实现；缓存根由 qn-config
 统一提供，目标平台/版本由 adapter 追加。CLI 不直接引用 adapter。
+
+native_audit_query 通过 core NativeAuditQuery 暴露 retained qn/native 关联查询；
+注入既有 process_policy 与受管缓存/审计目录，不改变 broker 源时钟与语义。

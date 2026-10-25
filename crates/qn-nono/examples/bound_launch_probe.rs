@@ -15,6 +15,7 @@ fn main() -> Result<()> {
     let root: Utf8PathBuf = args.next().ok_or("private fixture root required")?.into();
     let binary: Utf8PathBuf = args.next().ok_or("verified native binary required")?.into();
     let binding = LaunchBinding::reserve(&root, SessionId::new())?;
+    binding.publish_audit(&root.join("audit"), &root)?;
     println!(
         "{}",
         serde_json::json!({"session_id":binding.session().to_string(),

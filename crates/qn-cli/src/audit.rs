@@ -7,6 +7,7 @@ use qn_core::{
 };
 use std::{io::Write, time::Duration};
 mod follow;
+mod native;
 
 /// Closed broker event groups used only to select displayed records.
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -62,6 +63,14 @@ impl AuditFilter {
 /// Separate read-only broker/native queries; unified and cross-session views remain in #66.
 #[derive(Debug, Subcommand)]
 pub enum AuditCommand {
+    /// Query retained native network evidence separately from broker events.
+    Native {
+        /// Canonical qn session identifier, never an arbitrary native ID or path.
+        session: String,
+        /// Emit a versioned native report with explicit network-only coverage.
+        #[arg(long)]
+        json: bool,
+    },
     /// Show a session timeline with explicit source and integrity status.
     Show {
         /// Canonical qn session identifier.
@@ -101,6 +110,7 @@ pub enum AuditCommand {
 
 pub(crate) fn run(command: &AuditCommand, output: &mut dyn Write) -> Result<(), Error> {
     let (id, json, filter) = match command {
+        AuditCommand::Native { session, json } => return native::run(session, *json, output),
         AuditCommand::Show {
             session,
             json,
