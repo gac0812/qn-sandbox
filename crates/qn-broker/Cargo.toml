@@ -5,5 +5,24 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 
+[dependencies]
+qn-infra = { path = "../qn-infra", version = "0.1.0" }
+tokio-util = "0.7"
+camino = "1"
+qn-core = { path = "../qn-core", version = "0.1.0" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+thiserror = "2"
+toml = "0.9"
+
+getrandom = "0.3.4"
+snow = { version = "0.10", default-features = false, features = ["use-getrandom", "use-curve25519", "use-chacha20poly1305", "use-sha2"] }
+tokio = { version = "1", features = ["fs", "net", "io-util", "time"] }
+zeroize = { version = "1.9.1", features = ["serde"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros", "test-util"] }
+
 [lints]
 workspace = true
