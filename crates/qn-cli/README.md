@@ -69,3 +69,11 @@ cargo test -p qn-cli
 
 The CLI does not call nono directly. Concrete sandbox adapters are assembled
 through `qn-bootstrap` once the core ports are frozen.
+
+## Audit presentation
+
+The CLI crate also exposes pure renderers for a validated `qn-core::audit::AuditTimeline`:
+`render_audit_text` for terminal output and `render_audit_json` for a versioned JSON
+object. They do not read files, query adapters, or invent audit evidence. The actual
+reader and `qn audit` command are separate integration work; a rendered timeline keeps
+`integrity` and incomplete journal states visible.
