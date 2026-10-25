@@ -18,7 +18,9 @@ the effective command timeout.
 
 Environment overrides fail closed when present but not valid UTF-8. Paths in
 both normal output and error output escape terminal control characters and
-bidi controls before display.
+bidi controls before display. Invalid argument and subcommand diagnostics use
+that same escaping before clap formats the error; help, usage layout, output
+streams, and exit codes retain clap's normal behavior.
 
 The current `doctor` output explicitly marks the sandbox engine as **not
 checked**. It is a configuration diagnostic only and must not be treated as

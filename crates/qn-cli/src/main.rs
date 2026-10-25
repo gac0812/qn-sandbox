@@ -5,7 +5,13 @@ use std::process::ExitCode;
 use clap::Parser;
 
 fn main() -> ExitCode {
-    let cli = qn_cli::Cli::parse();
+    let cli = match qn_cli::Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(mut error) => {
+            qn_cli::sanitize_parse_error(&mut error);
+            error.exit();
+        }
+    };
     let mut stdout = std::io::stdout().lock();
 
     match qn_cli::run(&cli, &mut stdout) {

@@ -66,6 +66,45 @@ pub fn render_error(error: &Error) -> String {
     escape_terminal_text(&error.to_string())
 }
 
+/// Escapes untrusted parser context before clap formats and prints diagnostics.
+///
+/// Static usage and help retain their original layout.
+///
+/// # Examples
+///
+/// ```
+/// use clap::Parser;
+/// let mut error = qn_cli::Cli::try_parse_from(["qn", "bad\ncommand"])
+///     .expect_err("unknown subcommand");
+/// qn_cli::sanitize_parse_error(&mut error);
+/// assert!(!error.to_string().contains("bad\ncommand"));
+/// ```
+pub fn sanitize_parse_error(error: &mut clap::Error) {
+    use clap::error::ContextValue;
+
+    // In clap 4.6.7, this CLI's rejected arguments are String context values;
+    // styled usage/help is static (the command declares no positional values).
+    let replacements: Vec<_> = error
+        .context()
+        .filter_map(|(kind, value)| {
+            let escaped = match value {
+                ContextValue::String(text) => ContextValue::String(escape_terminal_text(text)),
+                ContextValue::Strings(texts) => ContextValue::Strings(
+                    texts
+                        .iter()
+                        .map(|text| escape_terminal_text(text))
+                        .collect(),
+                ),
+                _ => return None,
+            };
+            Some((kind, escaped))
+        })
+        .collect();
+    for (kind, value) in replacements {
+        error.insert(kind, value);
+    }
+}
+
 fn doctor(output: &mut dyn Write) -> Result<(), Error> {
     let paths = QnPaths::resolve()?;
     let config_file_exists = paths.config_file.exists();
