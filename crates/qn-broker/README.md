@@ -39,3 +39,23 @@ local integration with hash-verified nono 0.80.0; commands and evidence are reco
 in that Issue. The broader native fixtures and service composition remain tracked
 in #122/#107 and are not bundled into this renderer PR. No model call, multi-route,
 OAuth, existing user config merge, Windows/WSL or production lifecycle claim.
+
+## Codex MCP configuration (#136)
+
+write_codex_mcp_config takes a private absolute root and NonZeroU16 port, then
+atomically creates config.toml. The fixed qn_mcp server contains only
+http://127.0.0.1:<port>/qn_mcp/mcp and bearer_token_env_var = QN_MCP_TOKEN.
+No arbitrary URL/header/env, credential or phantom value is accepted. Existing
+files/directories are never replaced. Serialization reuses the already-approved
+toml dependency; async callers must put this blocking publication in spawn_blocking.
+
+Codex 0.147.0 does not expand URL environment references, so the host must match
+the port with LaunchBinding::command_with_proxy_port from #137/#139. An available
+port probe grants neither ownership nor authorization; native bind must succeed
+before child execution. Config.toml and its parent stay read-only to the sandbox.
+
+Real Codex app-server JSON/SSE list/call/revoke and occupied-port refusal passed
+in the local #136 integration, with no model call or real user authentication.
+Fresh state is provisioned separately: only tmp/.tmp, the individual installation_id
+and a separate SQLite directory were writable; host configuration is not imported.
+Native fixture/service publication, production profiles and #93 remain independent.
