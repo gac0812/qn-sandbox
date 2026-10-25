@@ -27,6 +27,9 @@ pub enum Command {
         /// Emit a versioned JSON configuration report with safe display paths.
         #[arg(long)]
         json: bool,
+        /// Restrict diagnostics to configuration checks for future engine-aware doctor modes.
+        #[arg(long)]
+        config_only: bool,
     },
 }
 
@@ -56,7 +59,7 @@ pub enum Error {
 /// writing diagnostics fails.
 pub fn run(cli: &Cli, output: &mut dyn Write) -> Result<(), Error> {
     match cli.command {
-        Command::Doctor { json } => doctor(output, json),
+        Command::Doctor { json, config_only } => doctor(output, json, config_only),
     }
 }
 
@@ -125,7 +128,7 @@ struct DoctorReport {
     configuration: &'static str,
 }
 
-fn doctor(output: &mut dyn Write, json: bool) -> Result<(), Error> {
+fn doctor(output: &mut dyn Write, json: bool, _config_only: bool) -> Result<(), Error> {
     let paths = QnPaths::resolve()?;
     let config_file_exists = paths.config_file.exists();
     let config = Config::load(&paths)?.apply_env_overrides()?;
