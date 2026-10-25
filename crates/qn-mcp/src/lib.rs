@@ -77,6 +77,64 @@ pub struct ToolCatalog {
     pub tools: Vec<ToolDescriptor>,
 }
 
+/// Versioned request sent from an MCP or SDK consumer to the control plane.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ToolRequest {
+    /// Wire schema version.
+    pub schema_version: u8,
+    /// Caller-owned correlation identifier.
+    pub request_id: String,
+    /// Stable catalog tool name.
+    pub tool: ToolName,
+    /// JSON object arguments; credentials remain host-mediated.
+    pub arguments: serde_json::Value,
+}
+
+/// Closed error categories for a failed tool invocation.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResultErrorCode {
+    /// The requested tool is not in the catalog.
+    UnknownTool,
+    /// Arguments failed the tool schema.
+    InvalidArguments,
+    /// The operation was refused by policy.
+    Denied,
+    /// The operation exceeded its bounded deadline.
+    Timeout,
+    /// The operation failed without exposing source payloads.
+    Failed,
+}
+
+/// Mutually exclusive tool success/error outcome.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case", tag = "status")]
+pub enum ToolOutcome {
+    /// Tool completed with a JSON payload.
+    Ok {
+        /// Tool output payload.
+        value: serde_json::Value,
+    },
+    /// Tool failed with a closed, safe error.
+    Error {
+        /// Closed error category.
+        code: ResultErrorCode,
+        /// Safe human-readable message without source payloads.
+        message: String,
+    },
+}
+
+/// Versioned result returned to an MCP or SDK consumer.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ToolResult {
+    /// Wire schema version.
+    pub schema_version: u8,
+    /// Correlation identifier copied from the request.
+    pub request_id: String,
+    /// Success payload or closed error.
+    pub outcome: ToolOutcome,
+}
+
 /// Errors while constructing or validating a catalog.
 #[derive(Debug, thiserror::Error, Eq, PartialEq)]
 pub enum CatalogError {
@@ -89,6 +147,43 @@ pub enum CatalogError {
     /// A schema contains a field that could carry a credential value.
     #[error("MCP input schema contains a credential-shaped field: {0}")]
     CredentialField(String),
+    /// Request metadata is invalid.
+    #[error("MCP tool request metadata is invalid")]
+    InvalidRequest,
+    /// Tool arguments must be a JSON object.
+    #[error("MCP tool arguments must be a JSON object")]
+    ArgumentsObject,
+}
+
+impl ToolRequest {
+    /// Validates version, correlation metadata and credential-free object arguments.
+    ///
+    /// # Errors
+    ///
+    /// Returns a closed error without echoing argument values.
+    pub fn validate(&self) -> Result<(), CatalogError> {
+        if self.schema_version != CATALOG_SCHEMA_VERSION || self.request_id.is_empty() {
+            return Err(CatalogError::InvalidRequest);
+        }
+        if !self.arguments.is_object() {
+            return Err(CatalogError::ArgumentsObject);
+        }
+        reject_credential_fields(&self.arguments, "")
+    }
+}
+
+impl ToolResult {
+    /// Validates result version and correlation metadata.
+    ///
+    /// # Errors
+    ///
+    /// Returns a closed error if the envelope metadata is invalid.
+    pub fn validate(&self) -> Result<(), CatalogError> {
+        if self.schema_version != CATALOG_SCHEMA_VERSION || self.request_id.is_empty() {
+            return Err(CatalogError::InvalidRequest);
+        }
+        Ok(())
+    }
 }
 
 impl ToolCatalog {
@@ -206,22 +301,6 @@ fn is_snake_case(name: &str) -> bool {
 }
 
 fn reject_credential_fields(value: &serde_json::Value, path: &str) -> Result<(), CatalogError> {
-    if let Some(properties) = value
-        .get("properties")
-        .and_then(serde_json::Value::as_object)
-    {
-        for (name, child) in properties {
-            let current = if path.is_empty() {
-                name.clone()
-            } else {
-                format!("{path}.{name}")
-            };
-            if ["api_key", "password", "secret", "token"].contains(&name.as_str()) {
-                return Err(CatalogError::CredentialField(current));
-            }
-            reject_credential_fields(child, &current)?;
-        }
-    }
     if let Some(items) = value.get("items") {
         reject_credential_fields(items, &format!("{path}[]"))?;
     }
@@ -309,5 +388,77 @@ mod schema_contract_tests {
             posture[4],
             (ToolName::SessionRun, CredentialPosture::HostMediated)
         );
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod envelope_tests {
+    use super::*;
+
+    #[test]
+    fn request_and_result_round_trip_with_correlated_schema() {
+        let request = ToolRequest {
+            schema_version: CATALOG_SCHEMA_VERSION,
+            request_id: "req-1".into(),
+            tool: ToolName::SessionStatus,
+            arguments: serde_json::json!({"session": "sxn-test"}),
+        };
+        request.validate().unwrap();
+        let request_bytes = serde_json::to_vec(&request).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<ToolRequest>(&request_bytes).unwrap(),
+            request
+        );
+
+        let result = ToolResult {
+            schema_version: CATALOG_SCHEMA_VERSION,
+            request_id: request.request_id.clone(),
+            outcome: ToolOutcome::Ok {
+                value: serde_json::json!({"phase": "running"}),
+            },
+        };
+        result.validate().unwrap();
+        let result_bytes = serde_json::to_vec(&result).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<ToolResult>(&result_bytes).unwrap(),
+            result
+        );
+    }
+
+    #[test]
+    fn request_rejects_non_object_and_credential_arguments() {
+        let mut request = ToolRequest {
+            schema_version: CATALOG_SCHEMA_VERSION,
+            request_id: "req-1".into(),
+            tool: ToolName::SessionRun,
+            arguments: serde_json::json!([]),
+        };
+        assert_eq!(request.validate(), Err(CatalogError::ArgumentsObject));
+        request.arguments = serde_json::json!({"config": {"password": "secret"}});
+        assert!(matches!(
+            request.validate(),
+            Err(CatalogError::CredentialField(_))
+        ));
+    }
+
+    #[test]
+    fn envelopes_reject_wrong_versions_or_empty_request_ids() {
+        let request = ToolRequest {
+            schema_version: 2,
+            request_id: String::new(),
+            tool: ToolName::ProfileList,
+            arguments: serde_json::json!({}),
+        };
+        assert_eq!(request.validate(), Err(CatalogError::InvalidRequest));
+        let result = ToolResult {
+            schema_version: 2,
+            request_id: String::new(),
+            outcome: ToolOutcome::Error {
+                code: ResultErrorCode::Failed,
+                message: "safe failure".into(),
+            },
+        };
+        assert_eq!(result.validate(), Err(CatalogError::InvalidRequest));
     }
 }
