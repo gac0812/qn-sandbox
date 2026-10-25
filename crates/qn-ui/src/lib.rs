@@ -503,3 +503,71 @@ mod state_machine_tests {
         model.complete_action().unwrap();
     }
 }
+
+/// Stable examples for UI smoke tests and desktop preview fixtures.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PreviewPreset {
+    /// All views contain safe representative data.
+    Ready,
+    /// Permission and audit views are unavailable while profiles/sessions are ready.
+    Degraded,
+    /// All views expose classified control-plane failure.
+    Failed,
+}
+
+impl PreviewPreset {
+    /// Builds a deterministic snapshot without I/O or credentials.
+    #[must_use]
+    pub fn snapshot(self) -> ControlPlaneSnapshot {
+        let profiles = vec![ProfileCard {
+            id: "qn/claude-code".into(),
+            version: "1.0.0".into(),
+            source: "builtin".into(),
+        }];
+        let sessions = vec![SessionCard {
+            session: "sxn-preview".into(),
+            profile: "qn/claude-code".into(),
+            phase: "running".into(),
+            cleanup: "unconfirmed".into(),
+        }];
+        let audit = vec![AuditCard {
+            session: "sxn-preview".into(),
+            source: "broker".into(),
+            integrity: "unverified".into(),
+            state: "partial".into(),
+            event_count: 1,
+        }];
+        match self {
+            Self::Ready => ControlPlaneSnapshot {
+                profiles: ViewState::Ready(profiles),
+                permissions: ViewState::Ready(PermissionPosture::HostMediated),
+                sessions: ViewState::Ready(sessions),
+                audit: ViewState::Ready(audit),
+            },
+            Self::Degraded => ControlPlaneSnapshot {
+                profiles: ViewState::Ready(profiles),
+                permissions: ViewState::Unavailable {
+                    reason: UnavailableReason::NoEvidence,
+                },
+                sessions: ViewState::Ready(sessions),
+                audit: ViewState::Unavailable {
+                    reason: UnavailableReason::NoEvidence,
+                },
+            },
+            Self::Failed => ControlPlaneSnapshot {
+                profiles: ViewState::Failed {
+                    code: FailureCode::ControlPlaneUnavailable,
+                },
+                permissions: ViewState::Failed {
+                    code: FailureCode::ControlPlaneUnavailable,
+                },
+                sessions: ViewState::Failed {
+                    code: FailureCode::ControlPlaneUnavailable,
+                },
+                audit: ViewState::Failed {
+                    code: FailureCode::ControlPlaneUnavailable,
+                },
+            },
+        }
+    }
+}

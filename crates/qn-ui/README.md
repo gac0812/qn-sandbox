@@ -12,3 +12,9 @@ that transport/auth contract is frozen under decision issue #192.
 `Unavailable` and `Failed` states are explicit so the UI never renders missing
 permissions or audit evidence as a successful empty state. Session cards keep
 `cleanup: unconfirmed` visible until the execution-tree proof is complete.
+
+## Preview fixtures
+
+`PreviewPreset::{Ready, Degraded, Failed}` provides deterministic, credential-free
+snapshots for UI smoke tests and desktop preview work. It never reads host state and
+must not be presented as live daemon data.
