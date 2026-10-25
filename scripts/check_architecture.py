@@ -27,7 +27,7 @@ def allowed_dependencies(name):
         return (BASE | CORE) - {name}
     if name == "qn-bootstrap":
         return BASE | CORE | ADAPTERS
-    return BASE | CORE | ({"qn-bootstrap"} if name in {"qn-cli", "qn-daemon"} else set())
+    return BASE | CORE | ({"qn-bootstrap"} if name in {"qn-cli", "qn-daemon"} else set()) | ({"qn-mcp"} if name == "qn-daemon" else set())
 
 
 def violations(metadata):
