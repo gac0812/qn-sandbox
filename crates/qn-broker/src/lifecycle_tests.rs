@@ -67,7 +67,7 @@ async fn it_invalidates_before_waiting_for_evidence_and_acknowledges_revoke_once
     let lock = grant.0.evidence.lock().await;
     let mut revoke = Box::pin(grant.revoke());
     pending(revoke.as_mut()).await;
-    assert_eq!(grant.authorize(&scope()), Err(GrantError::Denied));
+    assert_eq!(grant.authorize(&scope()), Err(GrantError::Revoked));
     assert_eq!(events(&file), ["grant_issued"]);
     drop(lock);
     let (first, second) = tokio::join!(revoke, grant.revoke());
@@ -100,7 +100,7 @@ async fn it_keeps_revocation_effective_on_audit_failure_or_cancelled_wait() {
             drop(lock);
             grant.revoke().await.unwrap();
         }
-        assert_eq!(grant.authorize(&scope()), Err(GrantError::Denied));
+        assert_eq!(grant.authorize(&scope()), Err(GrantError::Revoked));
         assert!(grant.0.failed.is_cancelled());
         assert_eq!(events(&file).len(), if exhausted { 1 } else { 2 });
     }
@@ -173,7 +173,7 @@ async fn it_invalidates_when_the_last_owner_drops_without_fabricating_a_revoke_e
     drop(copy);
     assert_eq!(
         registry.authorize(handle, session, &scope()),
-        Err(GrantError::Denied)
+        Err(GrantError::Revoked)
     );
     assert_eq!(events(&file), ["grant_issued"]);
 }
@@ -187,7 +187,7 @@ async fn it_bounds_journal_lock_wait_without_delaying_revocation() {
     tokio::time::pause();
     let mut revoke = Box::pin(grant.revoke());
     pending(revoke.as_mut()).await;
-    assert_eq!(grant.authorize(&scope()), Err(GrantError::Denied));
+    assert_eq!(grant.authorize(&scope()), Err(GrantError::Revoked));
     tokio::time::advance(JOURNAL_LOCK_DEADLINE + Duration::from_secs(1)).await;
     assert!(matches!(
         revoke.await,

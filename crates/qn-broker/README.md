@@ -150,3 +150,18 @@ and recoverable provider failures are audited; audit or registry uncertainty sto
 Already admitted replies may finish after revoke. Neither service success nor Drop proves
 sandbox process-tree cleanup (#93). Native proxy injection remains exclusively nono-owned.
 Run cargo test -p qn-bootstrap --test capture_service for ten real child/socket scenarios.
+## Broker audit query (#110 / #119)
+
+BrokerAuditQuery reads one fixed session filename under a trusted absolute audit root.
+It bounds bytes/lines/records and query time, rejects nonregular sources, unknown/duplicate
+fields, wrong owners and broken ordering. A partial last line is incomplete evidence;
+observed closure never proves process cleanup, delivery or cryptographic authenticity.
+Bootstrap supplies this reader to the real CLI; query never restores authorization.
+
+## Bounded revocation evidence (#113)
+
+GrantRegistry retains at most capacity removed grants independently of live capacity.
+Only matching handle/owner/scope before original expiry yields Revoked; unknown,
+mismatched, expired, evicted and restarted state remains Denied. Oldest evidence is
+evicted; neither history nor journal replay authorizes. Capture records the closed
+denied_after_revoke event only for this reason; all other failures stay generic.

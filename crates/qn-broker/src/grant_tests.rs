@@ -80,7 +80,7 @@ fn it_rechecks_after_provider_work_and_revokes_only_owned_grants() {
         registry.with_authorization(handle, session, &scope(), || panic!(
             "revoked provider result"
         )),
-        Err(GrantError::Denied)
+        Err(GrantError::Revoked)
     );
     let other = SessionId::new();
     let owned = registry
@@ -90,7 +90,10 @@ fn it_rechecks_after_provider_work_and_revokes_only_owned_grants() {
         .grant(other, vec![scope()], Duration::from_secs(60))
         .unwrap();
     assert_eq!(registry.revoke_session(session), Ok(1));
-    denied(registry.authorize(owned, session, &scope()));
+    assert_eq!(
+        registry.authorize(owned, session, &scope()),
+        Err(GrantError::Revoked)
+    );
     assert_eq!(registry.authorize(foreign, other, &scope()), Ok(()));
 }
 
@@ -116,7 +119,70 @@ fn it_serializes_delivery_admission_with_concurrent_revoke() {
         })
         .unwrap();
     worker.join().unwrap();
-    denied(registry.authorize(handle, session, &scope()));
+    assert_eq!(
+        registry.authorize(handle, session, &scope()),
+        Err(GrantError::Revoked)
+    );
+}
+
+#[test]
+fn it_attributes_only_exact_unexpired_revocation_evidence() {
+    let registry = GrantRegistry::new(NonZeroUsize::MIN);
+    let session = SessionId::new();
+    let now = Instant::now();
+    let ttl = Duration::from_secs(60);
+    let handle = registry.grant_at(session, vec![scope()], ttl, now).unwrap();
+    registry.revoke(handle, session).unwrap();
+    registry.revoke(handle, session).unwrap();
+    denied(registry.revoke(handle, SessionId::new()));
+    let other = CaptureScope::new("provider", "https://api.invalid:443", "GET", "/v1").unwrap();
+    for (id, owner, route, time, expected) in [
+        (handle, session, scope(), now, GrantError::Revoked),
+        (handle, SessionId::new(), scope(), now, GrantError::Denied),
+        (handle, session, other, now, GrantError::Denied),
+        (
+            GrantHandle::new(),
+            session,
+            scope(),
+            now,
+            GrantError::Denied,
+        ),
+        (handle, session, scope(), now + ttl, GrantError::Denied),
+    ] {
+        assert_eq!(
+            registry.deliver_at(id, owner, &route, || time, || panic!("denied delivery")),
+            Err(expected)
+        );
+    }
+    let restarted = GrantRegistry::new(NonZeroUsize::MIN);
+    denied(restarted.authorize(handle, session, &scope()));
+}
+
+#[test]
+fn it_bounds_revocation_history_without_consuming_active_capacity() {
+    let registry = GrantRegistry::new(NonZeroUsize::MIN);
+    let session = SessionId::new();
+    let first = registry
+        .grant(session, vec![scope()], Duration::from_secs(60))
+        .unwrap();
+    registry.revoke(first, session).unwrap();
+    let second = registry
+        .grant(session, vec![scope()], Duration::from_secs(60))
+        .unwrap();
+    assert_eq!(
+        registry.authorize(first, session, &scope()),
+        Err(GrantError::Revoked)
+    );
+    assert_eq!(registry.revoke_session(session), Ok(1));
+    assert_eq!(registry.revoke_session(session), Ok(0));
+    denied(registry.authorize(first, session, &scope()));
+    assert_eq!(
+        registry.authorize(second, session, &scope()),
+        Err(GrantError::Revoked)
+    );
+    let state = registry.grants.lock().unwrap();
+    assert!(state.active.is_empty());
+    assert_eq!(state.revoked.len(), 1);
 }
 fn denied<T>(result: Result<T, GrantError>) {
     assert_eq!(result.err(), Some(GrantError::Denied));

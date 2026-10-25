@@ -49,6 +49,8 @@ pub enum AuditEventKind {
     ReplyWritten,
     /// Identity or authorization was denied; no more specific cause was recorded.
     Denied,
+    /// Exact owner and scope match retained, unexpired revocation evidence.
+    DeniedAfterRevoke,
     /// Request/provider/transport failed; precise cause was not recorded.
     Failed,
     /// Serving ended, not necessarily the sandbox execution tree.

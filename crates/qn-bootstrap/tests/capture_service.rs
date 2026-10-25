@@ -267,7 +267,7 @@ fn verify_events(mode: &str, path: &std::path::Path) -> Result<()> {
             "delivery_prepared",
             "reply_written",
             "grant_revoked",
-            "denied",
+            "denied_after_revoke",
             "service_closed",
         ],
         "race" => &[
@@ -275,7 +275,7 @@ fn verify_events(mode: &str, path: &std::path::Path) -> Result<()> {
             "provider_requested",
             "grant_revoked",
             "delivery_prepared",
-            "denied",
+            "denied_after_revoke",
             "service_closed",
         ],
         "recovery" => &[
@@ -286,7 +286,7 @@ fn verify_events(mode: &str, path: &std::path::Path) -> Result<()> {
             "delivery_prepared",
             "reply_written",
             "grant_revoked",
-            "denied",
+            "denied_after_revoke",
             "service_closed",
         ],
         "audit_before" => &["grant_issued"],
