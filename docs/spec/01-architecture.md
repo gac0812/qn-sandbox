@@ -157,12 +157,16 @@ Noise NNpsk0/25519/ChaChaPoly/SHA256，PSK 仅在宿主私有 binding；grant �
 
 ### 4.2 首个审计查询消费者（#110）
 
-本地集成中 CLI 的 audit show/list --session 经 bootstrap 装配 core AuditQuery；qn-broker 实现固定会话
+CLI 的 audit show/list --session 经 bootstrap 装配 core AuditQuery；qn-broker 实现固定会话
 文件的有界读取。core 只包含封闭呈现类型和查询接口，不依赖 adapter/文件系统。日志源明确
 为 broker、完整性 unverified；区分 empty/open/partial/observed_closed，关闭事件不证明
 沙箱 Stopped、完整送达或防篡改。未知字段、重复字段、错会话、序号缺失/倒退均拒绝；
 只允许尾部未完成行作为 partial 展示。native/fs 拒绝不从 broker 推断，跨源顺序与 follow
 待真实消费者实现。沿用 #14/#47 用户委托授权，不声称 B/C 个人审批；决定见 #110。
+
+#120 的 audit follow 按 250ms 轮询已有 AuditQuery，检查完整已读前缀后仅输出新增匹配。
+过滤在全部快照验证后应用；原序号与源状态保留。GrantIssued/GrantRevoked 按 #119 投影。
+沿用 #152 的 schema_version=1 与 timeline JSON 包装，保留人读展示；不恢复授权。
 
 ### 4.3 引擎安装与诊断契约（#114/#117）
 
