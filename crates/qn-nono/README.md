@@ -264,3 +264,17 @@ Host roots must remain private and trusted; no same-user tamper authentication c
 This macOS arm64 fixture checks actual native network denial, retained identity, mismatched
 mapping rejection and tampered-binary refusal before execution, then offline repair.
 It does not prove filesystem-denial ingestion, complete process cleanup or Agent E2E.
+
+## Offline profile canary (#75)
+
+The prepared offline profile can be exercised against the pinned engine:
+
+    mkdir -p /Users/Shared/qn-profile-parent && chmod 700 /Users/Shared/qn-profile-parent
+    QN_TEST_NONO=/verified/nono \
+    QN_TEST_PROFILE_PARENT=/Users/Shared/qn-profile-parent \
+    QN_FAKE_SECRET=synthetic-canary \
+    cargo test --locked -p qn-nono --test profile_canary -- --ignored
+
+It verifies a project write, denial of an absolute synthetic host secret outside the
+grants, and removal of an inherited secret variable. It does not prove network,
+credential, Agent E2E or cleanup behavior.
