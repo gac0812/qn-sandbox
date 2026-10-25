@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>html,body{margin:0;background:#000}canvas{position:absolute;left:0;top:0;display:block}</style>
+<canvas id="bg"></canvas><canvas id="gl"></canvas><canvas id="fx"></canvas>
+<script type="importmap">{"imports":{"three":"/node_modules/three/build/three.module.js","three/addons/":"/node_modules/three/examples/jsm/"}}</script>
+<script type="module">
+import { W, H, loadFonts } from '/lib/lib.js';
+import { createWorld } from '/lib/world3d.js';
+import { SHOTS, T, layout, drawShot } from '/film/shots.js';
+
+const mk = (id) => { const c = document.getElementById(id); c.width = W; c.height = H; return c.getContext('2d'); };
+const b = mk('bg'), f = mk('fx');
+const world = createWorld(document.getElementById('gl'), W, H);
+
+// shot lengths follow the narration: load the lines and their synthesised durations first
+const [lines, durs] = await Promise.all(['/film/vo/lines.json', '/film/vo/durations.json'].map((u) => fetch(u).then((r) => r.json())));
+layout(lines, durs);
+window.DUR = T.DUR;
+window.EV = T.EVENTS;
+window.TL = T.TL;
+window.SUBS = T.SUBS;
+window.VO = T.VO;
+window.SHOTS = SHOTS.map(({ id, t0, t1, key, framing, action, vo }) => ({ id, t0, t1, key, framing, action, line: (vo || []).map((v) => lines.find((l) => l.id === v).show).join(' / ') }));
+window.render = async (t) => {
+  b.setTransform(1, 0, 0, 1, 0, 0); f.setTransform(1, 0, 0, 1, 0, 0);
+  b.clearRect(0, 0, W, H); f.clearRect(0, 0, W, H);
+  drawShot(t, { b, f, world });
+  // keep every overlay canvas repainting in headless capture
+  f.fillStyle = 'rgba(0,0,0,0.004)'; f.fillRect(0, 0, 1, 1);
+};
+try { await loadFonts(); window.READY = true; } catch (e) { window.FAIL = String(e); }
+</script>

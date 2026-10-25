@@ -1,0 +1,12 @@
+# downloaded by fetch-assets.sh
+node_modules/
+fonts/
+samples/
+# build output and synthesised narration (re-create with build.sh / tools/tts.py)
+out/
+film/vo/*.wav
+film/vo/*.mp3
+film/vo/cache.json
+qn-sandbox.mp4
+qn-sandbox.srt
+poster.jpg

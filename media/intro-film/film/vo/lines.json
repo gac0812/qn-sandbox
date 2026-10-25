@@ -1,0 +1,22 @@
+[
+ {"id": "L1", "emotion": "happy", "say": "AI 助手越来越能干：改代码、跑命令、上网查资料。", "show": "AI 助手越来越能干：改代码、跑命令、上网查资料。", "en": "AI agents can do more and more: edit code, run commands, browse the web."},
+ {"id": "L2", "emotion": "fearful", "say": "可它和你的 SSH 密钥、云账号，住在同一台电脑上。网页里藏一句坏指令，钥匙就可能被带走。", "show": "可它和你的 SSH 密钥、云账号住在同一台电脑上。网页里藏一句坏指令，钥匙就可能被带走。", "en": "But it shares a computer with your SSH keys and cloud accounts. One hidden instruction on a web page, and the keys could walk away."},
+ {"id": "L3", "emotion": "happy", "say": "Q N sandbox，给它一间自己的屋子。打开终端，在项目目录里，敲一行命令。", "show": "qn sandbox 给它一间自己的屋子。打开终端，在项目目录里敲一行命令。", "en": "qn sandbox gives it a room of its own. Open a terminal and type one command in your project."},
+ {"id": "L4", "emotion": "happy", "say": "回车。不用装虚拟机，也不用懂 Landlock 和 Seatbelt，屋子已经搭好了。", "show": "回车。不用装虚拟机，也不用懂 Landlock 和 Seatbelt，屋子已经搭好了。", "en": "Enter. No virtual machine, no Landlock or Seatbelt know-how: the room is ready."},
+ {"id": "L5", "emotion": "happy", "say": "在屋里，它照常干活：读项目、改代码、跑测试，一点不耽误。", "show": "在屋里，它照常干活：读项目、改代码、跑测试，一点不耽误。", "en": "Inside, it works as usual: reads the project, edits code, runs tests."},
+ {"id": "L6", "emotion": "neutral", "say": "真正的钥匙，一直挂在屋外。它手里只有一张临时句柄，上面没有任何真实密钥。", "show": "真正的钥匙一直挂在屋外。它手里只有一张临时句柄，上面没有任何真实密钥。", "en": "The real key always hangs outside. It only holds a temporary handle, with no real secret on it."},
+ {"id": "L7", "emotion": "happy", "say": "要推代码时，把句柄递出去，由宿主这边的代理，替它开门。", "show": "要推代码时，把句柄递出去，由宿主这边的代理替它开门。", "en": "To push code, it hands the handle out, and a proxy on the host opens the door for it."},
+ {"id": "L8", "emotion": "surprised", "say": "可要是，它被骗了呢？", "show": "可要是，它被骗了呢？", "en": "But what if it gets tricked?"},
+ {"id": "L9", "emotion": "neutral", "say": "别担心。文件和网络默认关着门，越过配置档的动作，当场拦下，还会记进审计，你随时看得到。", "show": "别担心。文件和网络默认关着门，越过配置档的动作当场拦下，还会记进审计，你随时看得到。", "en": "Don't worry. Files and network are closed by default; anything beyond the profile is stopped on the spot and written to an audit log you can always see."},
+ {"id": "L10", "emotion": "happy", "say": "接 M C P 服务也一样：配置里只写句柄，密钥由宿主侧的网关代为应答。", "show": "接 MCP 服务也一样：配置里只写句柄，密钥由宿主侧的网关代为应答。", "en": "MCP servers work the same way: the config holds only a handle; the host-side gateway answers with the secret."},
+ {"id": "L11", "emotion": "neutral", "say": "这间屋子是怎么搭起来的？最底层，是操作系统内核自带的隔离能力；", "show": "这间屋子是怎么搭起来的？最底层，是操作系统内核自带的隔离能力；", "en": "How is the room built? At the bottom: isolation built into the operating system kernel;"},
+ {"id": "L12", "emotion": "neutral", "say": "往上，开源安全内核 nono，把这堵墙砌牢；", "show": "往上，开源安全内核 nono 把这堵墙砌牢；", "en": "above it, the open-source security core nono makes that wall solid;"},
+ {"id": "L13", "emotion": "neutral", "say": "再往上，凭证代理和 M C P 网关，替 Agent 保管钥匙；", "show": "再往上，凭证代理和 MCP 网关替 Agent 保管钥匙；", "en": "then the credential broker and MCP gateway keep the keys for the agent;"},
+ {"id": "L14", "emotion": "happy", "say": "最上面，是你每天用的命令行和桌面面板。", "show": "最上面，是你每天用的命令行和桌面面板。", "en": "and on top, the command line and desktop panel you use every day."},
+ {"id": "L15", "emotion": "happy", "say": "打开面板：会话、配置档、权限、审计，一眼就能看清。", "show": "打开面板：会话、配置档、权限、审计，一眼就能看清。", "en": "Open the panel: sessions, profiles, permissions, audit, all at a glance."},
+ {"id": "L16", "emotion": "neutral", "say": "想随时收回权限？", "show": "想随时收回权限？", "en": "Want to take access back?"},
+ {"id": "L17", "emotion": "happy", "say": "点一下撤销，句柄立刻作废。", "show": "点一下撤销，句柄立刻作废。", "en": "One click on revoke, and the handle stops working at once."},
+ {"id": "L18", "emotion": "happy", "say": "Mac 上原生运行；Windows 上，它会自动备好 W S L 2，用起来一模一样。", "show": "Mac 上原生运行；Windows 上它会自动备好 WSL2，用起来一模一样。", "en": "Native on Mac; on Windows it sets up WSL2 for you, and it feels exactly the same."},
+ {"id": "L19", "emotion": "happy", "say": "Codex 也能住进隔壁；DeepSeek 的 D S H，正在路上。", "show": "Codex 也能住进隔壁；DeepSeek 的 dsh 正在路上。", "en": "Codex can move in next door; DeepSeek's dsh is on its way."},
+ {"id": "L20", "emotion": "happy", "say": "让 AI 放手去干，钥匙始终在你手里。Q N sandbox，关得住，也待得舒服。", "show": "让 AI 放手去干，钥匙始终在你手里。qn sandbox，关得住，也待得舒服。", "en": "Let AI get on with the work; the keys stay in your hands. qn sandbox: safe by default, comfortable by design."}
+]

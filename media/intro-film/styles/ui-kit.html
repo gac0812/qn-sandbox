@@ -1,0 +1,152 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>html,body{margin:0;background:#000}canvas{display:block}</style>
+<canvas id="c"></canvas>
+<script type="module">
+import { rr, loadFonts, CLAY } from '/lib/lib.js';
+import { macWindow, macNotification, cursor, shieldGlyph, appIcon } from '/lib/macui.js';
+import { stamp, INK } from '/lib/fx.js';
+
+const SW = 1920, SH = 1260;
+const cv = document.getElementById('c'); cv.width = SW; cv.height = SH; const ctx = cv.getContext('2d');
+const STATES = ['常态', '悬停', '按下', '成功', '拦截'];
+const NOTE = ['', '提亮 + 阴影抬起 4px · 120ms ease-out', '下沉 2px · 缩到 0.96 · 80ms，回弹 back-out 220ms', '绿色对勾弹出 · 盖章 scale 1.3→1', '红色描边 + 左右抖 3 下（6px，240ms）'];
+const ROWS = ['窗口', '按钮', '卡片', '通知', '贴纸字幕', '光标'];
+const X0 = 230, CW = 330, Y0 = 150, RH = 172;
+
+function text(t, x, y, size, w = 400, col = INK, align = 'left', fam = '"Noto Sans SC"') {
+  ctx.fillStyle = col; ctx.font = `${w} ${size}px ${fam}`; ctx.textAlign = align; ctx.fillText(t, x, y); ctx.textAlign = 'left';
+}
+const shake = (s) => (s === 4 ? 6 : 0);
+
+function windowCell(s, cx, cy) {
+  ctx.save();
+  let x = cx - 140 + shake(s), y = cy - 62;
+  if (s === 2) { ctx.translate(cx, cy); ctx.scale(1.03, 1.03); ctx.translate(-cx, -cy); x += 10; y -= 6; }
+  if (s === 4) { ctx.globalAlpha = 0.25; macWindow(ctx, x - 12, y, 280, 124, { title: 'claude' }); ctx.globalAlpha = 1; }
+  const body = macWindow(ctx, x, y, 280, 124, { title: 'claude — 沙箱中', hover: s === 1 });
+  ctx.font = '500 14px "JetBrains Mono"'; ctx.fillStyle = '#6d5d52'; ctx.fillText('❯ qn run …', body.x + 16, body.y + 34);
+  if (s === 3) { ctx.strokeStyle = '#3E9B6F'; ctx.lineWidth = 3; rr(ctx, x - 4, y - 4, 288, 132, 17); ctx.stroke(); chip(body.x + 16, body.y + 50, '已隔离', '#E3F2E9', '#2f7a55'); }
+  if (s === 4) { ctx.strokeStyle = '#E8584A'; ctx.lineWidth = 3; rr(ctx, x - 4, y - 4, 288, 132, 17); ctx.stroke(); chip(body.x + 16, body.y + 50, '越界已拦截', '#FBE3DF', '#C2412F'); }
+  ctx.restore();
+}
+function chip(x, y, t, bg, fg) {
+  ctx.font = '700 13px "Noto Sans SC"'; const w = ctx.measureText(t).width + 20;
+  ctx.fillStyle = bg; rr(ctx, x, y, w, 24, 12); ctx.fill(); ctx.fillStyle = fg; ctx.fillText(t, x + 10, y + 17);
+}
+
+function button(s, cx, cy) {
+  const w = 180, h = 52;
+  const press = s === 2 ? 1 : 0;
+  const col = s === 3 ? '#3E9B6F' : s === 4 ? '#E8584A' : s === 1 ? '#E4876A' : CLAY;
+  const label = s === 3 ? '✓ 已启动' : s === 4 ? '已拦截' : '开始会话';
+  ctx.save(); ctx.translate(cx + shake(s), cy + press * 2); ctx.scale(1 - press * 0.04, 1 - press * 0.04);
+  if (!press) { ctx.shadowColor = 'rgba(160,70,40,0.35)'; ctx.shadowBlur = s === 1 ? 20 : 8; ctx.shadowOffsetY = s === 1 ? 7 : 3; }
+  ctx.fillStyle = col; rr(ctx, -w / 2, -h / 2, w, h, 14); ctx.fill();
+  ctx.shadowColor = 'transparent';
+  if (press) { ctx.fillStyle = 'rgba(0,0,0,0.12)'; rr(ctx, -w / 2, -h / 2, w, 6, 3); ctx.fill(); }
+  ctx.fillStyle = 'rgba(255,255,255,0.22)'; rr(ctx, -w / 2 + 6, -h / 2 + 4, w - 12, h / 2 - 6, 10); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.font = '700 19px "Noto Sans SC"'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(label, 0, 1);
+  ctx.restore(); ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  if (s === 2) { ctx.strokeStyle = 'rgba(217,119,87,0.4)'; ctx.lineWidth = 3; rr(ctx, cx - w / 2 - 12, cy - h / 2 - 12, w + 24, h + 24, 20); ctx.stroke(); }
+}
+
+function card(s, cx, cy) {
+  const w = 270, h = 110, lift = s === 1 ? -5 : s === 2 ? 2 : 0;
+  const x = cx - w / 2 + shake(s), y = cy - h / 2 + lift;
+  ctx.save();
+  ctx.shadowColor = 'rgba(60,30,20,0.18)'; ctx.shadowBlur = s === 1 ? 30 : s === 2 ? 6 : 16; ctx.shadowOffsetY = s === 1 ? 12 : 4;
+  ctx.fillStyle = '#FFFCF8'; rr(ctx, x, y, w, h, 18); ctx.fill(); ctx.restore();
+  const border = s === 3 ? '#3E9B6F' : s === 4 ? '#E8584A' : 'rgba(0,0,0,0.06)';
+  ctx.strokeStyle = border; ctx.lineWidth = s >= 3 ? 3 : 1; rr(ctx, x, y, w, h, 18); ctx.stroke();
+  ctx.fillStyle = '#7b6a5f'; ctx.font = '600 13px "Noto Sans SC"'; ctx.fillText('MCP · github', x + 20, y + 30);
+  ctx.fillStyle = '#2a1f1a'; ctx.font = '600 17px "JetBrains Mono"'; ctx.fillText('qn://handle/github', x + 20, y + 60);
+  if (s === 3) chip(x + 20, y + 74, '已代用', '#E3F2E9', '#2f7a55');
+  else if (s === 4) chip(x + 20, y + 74, '已拦截 · 明文密钥', '#FBE3DF', '#C2412F');
+  else chip(x + 20, y + 74, '句柄 · 无密钥', '#FFF3CF', '#8a6a1a');
+}
+
+function notification(s, cx, cy) {
+  ctx.save(); ctx.translate(cx, cy); const sc = s === 2 ? 0.76 : 0.78; ctx.scale(sc, sc); ctx.translate(-190 + shake(s), -39);
+  const t = s === 3 ? ['已代用：github', '宿主侧代理完成请求'] : s === 4 ? ['已拦截：读取 ~/.ssh', 'qn/claude-code · 已写入审计'] : ['会话已启动', 'qn/claude-code · 明文凭证 0'];
+  macNotification(ctx, { x: 0, y: 0, title: t[0], body: t[1] });
+  if (s === 1) {
+    ctx.fillStyle = 'rgba(250,246,242,0.95)'; ctx.beginPath(); ctx.arc(4, 4, 13, 0, 7); ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,0.15)'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.strokeStyle = '#5d524b'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-1, -1); ctx.lineTo(9, 9); ctx.moveTo(9, -1); ctx.lineTo(-1, 9); ctx.stroke();
+  }
+  if (s === 3) { ctx.strokeStyle = '#3E9B6F'; ctx.lineWidth = 3; rr(ctx, -2, -2, 384, 82, 19); ctx.stroke(); }
+  if (s === 4) { ctx.strokeStyle = '#E8584A'; ctx.lineWidth = 3; rr(ctx, -2, -2, 384, 82, 19); ctx.stroke(); }
+  ctx.restore();
+}
+
+function sticker(s, cx, cy) {
+  if (s === 0) {
+    ctx.font = '600 20px "Noto Sans SC"'; const t = '一条命令，住进沙箱。'; const w = ctx.measureText(t).width + 50;
+    ctx.fillStyle = 'rgba(40,28,22,0.76)'; rr(ctx, cx - w / 2, cy - 24, w, 48, 24); ctx.fill();
+    text(t, cx, cy + 7, 20, 600, '#fff', 'center');
+    return;
+  }
+  if (s === 3) { stamp(ctx, '已代用', cx, cy, { col: '#3E9B6F', size: 34, rot: -0.08 }); return; }
+  if (s === 4) { stamp(ctx, '已拦截', cx + shake(s), cy, { size: 34, rot: -0.12 }); return; }
+  // hover = lifted paper sticker, pressed = squashed while stamping
+  ctx.save(); ctx.translate(cx, cy + (s === 2 ? 4 : -4)); ctx.scale(s === 2 ? 1.12 : 1, s === 2 ? 0.86 : 1); ctx.rotate(-0.04);
+  ctx.font = '400 30px "ZCOOL KuaiLe"'; const t = '在外面'; const w = ctx.measureText(t).width + 44;
+  ctx.shadowColor = 'rgba(40,20,10,0.25)'; ctx.shadowBlur = s === 1 ? 18 : 4; ctx.shadowOffsetY = s === 1 ? 10 : 2;
+  ctx.fillStyle = '#FFFDF6'; rr(ctx, -w / 2, -30, w, 60, 14); ctx.fill(); ctx.shadowColor = 'transparent';
+  ctx.lineWidth = 4; ctx.strokeStyle = INK; rr(ctx, -w / 2, -30, w, 60, 14); ctx.stroke();
+  ctx.fillStyle = INK; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(t, 0, 2);
+  ctx.restore(); ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+}
+
+function pointer(s, cx, cy) {
+  const x = cx - 10, y = cy - 20;
+  if (s === 0) cursor(ctx, x, y, { scale: 1.4 });
+  if (s === 1) hand(x, y);
+  if (s === 2) cursor(ctx, x, y, { scale: 1.4, press: true, ripple: 0.45 });
+  if (s === 3) { cursor(ctx, x, y, { scale: 1.4 }); badge(x + 30, y + 40, '#3E9B6F', true); }
+  if (s === 4) { cursor(ctx, x, y, { scale: 1.4 }); badge(x + 30, y + 40, '#E8584A', false); }
+}
+function badge(x, y, col, ok) {
+  ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, 13, 0, 7); ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.stroke();
+  ctx.lineCap = 'round'; ctx.beginPath();
+  if (ok) { ctx.moveTo(x - 5, y); ctx.lineTo(x - 1, y + 4); ctx.lineTo(x + 6, y - 4); }
+  else { ctx.arc(x, y, 6, 0, 7); ctx.moveTo(x - 4, y + 4); ctx.lineTo(x + 4, y - 4); }
+  ctx.stroke();
+}
+function hand(x, y) {
+  // pointing hand (drawn), scaled
+  ctx.save(); ctx.translate(x, y); ctx.scale(1.4, 1.4);
+  ctx.shadowColor = 'rgba(0,0,0,0.3)'; ctx.shadowBlur = 4; ctx.shadowOffsetY = 2;
+  ctx.fillStyle = '#fff'; ctx.strokeStyle = '#111'; ctx.lineWidth = 1.6; ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(6, 0); ctx.quadraticCurveTo(10, 0, 10, 4); ctx.lineTo(10, 12); ctx.quadraticCurveTo(14, 10, 15, 13); ctx.quadraticCurveTo(19, 11, 19.5, 15);
+  ctx.quadraticCurveTo(23, 14, 23, 18); ctx.lineTo(23, 25); ctx.quadraticCurveTo(22, 31, 16, 32); ctx.lineTo(10, 32); ctx.quadraticCurveTo(6, 31, 4, 27);
+  ctx.lineTo(0, 20); ctx.quadraticCurveTo(-1, 16, 3, 17); ctx.lineTo(3, 4); ctx.quadraticCurveTo(3, 0, 6, 0); ctx.closePath();
+  ctx.fill(); ctx.shadowColor = 'transparent'; ctx.stroke();
+  ctx.restore();
+}
+
+const DRAW = [windowCell, button, card, notification, sticker, pointer];
+
+window.render = async () => {
+  ctx.fillStyle = '#F4EEE8'; ctx.fillRect(0, 0, SW, SH);
+  text('界面组件样张 · UI KIT', 50, 62, 36, 700);
+  text('A 的高清界面语法 + B 的贴纸/盖章；每个交互都有「预备 → 动作 → 回弹」', 470, 60, 20, 400, '#7b6a5f');
+  STATES.forEach((s, i) => {
+    const cx = X0 + i * CW + CW / 2;
+    text(s, cx, 116, 22, 700, INK, 'center');
+  });
+  ROWS.forEach((r, j) => {
+    const y = Y0 + j * RH;
+    ctx.fillStyle = j % 2 ? '#F7F2EC' : '#FBF7F2'; rr(ctx, 30, y, SW - 60, RH - 10, 18); ctx.fill();
+    text(r, 60, y + RH / 2 + 4, 22, 700);
+    STATES.forEach((_, i) => DRAW[j](i, X0 + i * CW + CW / 2, y + (RH - 10) / 2));
+  });
+  // motion notes
+  const ny = Y0 + ROWS.length * RH + 10;
+  text('动效参数', 60, ny + 30, 20, 700);
+  NOTE.forEach((n, i) => { if (n) text(n, X0 + i * CW + CW / 2, ny + 30, 15, 500, '#5a4d45', 'center'); });
+  text('窗口弹出：0.6→1.0 back-out(2.2) 500ms · 通知：自右滑入 400ms ease-out · 卡片飞入：+60px→0 back-out 400ms · 光标：弹簧缓动、点击下压 0.9 + 涟漪 400ms', 60, ny + 62, 16, 400, '#5a4d45');
+};
+try { await loadFonts(); window.READY = true; } catch (e) { window.FAIL = String(e); }
+</script>

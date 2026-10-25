@@ -1,0 +1,172 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>html,body{margin:0;background:#000}canvas{display:block}</style>
+<canvas id="c"></canvas>
+<script type="module">
+import { W, H, rr, loadFonts, setupCanvas, drawClawd, key, mulberry, CLAY } from '/lib/lib.js';
+
+const ctx = setupCanvas();
+const INK = '#4A3226';
+
+// shared paper grain tile
+const grain = document.createElement('canvas'); grain.width = grain.height = 256;
+{
+  const g = grain.getContext('2d'); const R = mulberry(11);
+  for (let i = 0; i < 9000; i++) {
+    const v = R() < 0.5 ? 0 : 255;
+    g.fillStyle = `rgba(${v},${v},${v},${0.03 + R() * 0.05})`;
+    g.fillRect(R() * 256, R() * 256, 1 + R() * 2, 1 + R() * 1.5);
+  }
+  for (let i = 0; i < 60; i++) { g.strokeStyle = `rgba(120,90,60,${0.05 + R() * 0.05})`; g.lineWidth = 0.7; g.beginPath(); const x = R() * 256, y = R() * 256; g.moveTo(x, y); g.lineTo(x + R() * 20 - 10, y + R() * 20 - 10); g.stroke(); }
+}
+const grainPat = ctx.createPattern(grain, 'repeat');
+
+// A cut-paper piece: cast shadow, cardboard edge, off-white border, colour, grain.
+function piece(path, fill, o = {}) {
+  const border = o.border ?? 10, lift = o.lift ?? 10;
+  ctx.save();
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  ctx.save();
+  ctx.shadowColor = `rgba(70,40,20,${o.shadowA ?? 0.28})`; ctx.shadowBlur = lift * 1.8; ctx.shadowOffsetX = lift * 0.5; ctx.shadowOffsetY = lift;
+  path(); ctx.strokeStyle = '#F7F1E6'; ctx.lineWidth = border * 2; ctx.stroke(); ctx.fillStyle = '#F7F1E6'; ctx.fill();
+  ctx.restore();
+  if (border) { ctx.translate(0, 2); path(); ctx.strokeStyle = '#CDBFAE'; ctx.lineWidth = border * 2; ctx.stroke(); ctx.translate(0, -2); path(); ctx.strokeStyle = '#FBF7EF'; ctx.lineWidth = border * 2; ctx.stroke(); }
+  path(); ctx.fillStyle = fill; ctx.fill();
+  if (o.inner) { ctx.save(); path(); ctx.clip(); o.inner(); ctx.restore(); }
+  ctx.save(); path(); if (border) { ctx.lineWidth = border * 2; ctx.stroke(); } ctx.clip(); ctx.fillStyle = grainPat; ctx.fillRect(0, 0, W, H); ctx.restore();
+  ctx.restore();
+}
+const rect = (x, y, w, h, r) => () => rr(ctx, x, y, w, h, r);
+
+function desk() {
+  ctx.fillStyle = '#E9D7BF'; ctx.fillRect(0, 0, W, H);
+  const vg = ctx.createRadialGradient(W / 2, H * 0.4, 200, W / 2, H / 2, 1200);
+  vg.addColorStop(0, 'rgba(255,240,215,0.7)'); vg.addColorStop(1, 'rgba(120,80,50,0.25)');
+  ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = grainPat; ctx.fillRect(0, 0, W, H);
+}
+
+function screen() {
+  // the desktop itself is a big sheet of paper
+  piece(rect(70, 50, W - 140, H - 120, 34), '#F6C9A9', {
+    lift: 16, inner: () => {
+      const g = ctx.createLinearGradient(0, 50, 0, H);
+      g.addColorStop(0, '#F9D8BF'); g.addColorStop(1, '#EFB394'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      // cut-paper hills on the wallpaper
+      ctx.fillStyle = '#E99B80'; ctx.beginPath(); ctx.moveTo(70, 800); ctx.bezierCurveTo(500, 640, 900, 860, 1850, 700); ctx.lineTo(1850, 1000); ctx.lineTo(70, 1000); ctx.fill();
+      ctx.fillStyle = '#DD8A70'; ctx.beginPath(); ctx.moveTo(70, 900); ctx.bezierCurveTo(600, 800, 1300, 960, 1850, 860); ctx.lineTo(1850, 1000); ctx.lineTo(70, 1000); ctx.fill();
+      ctx.fillStyle = '#FCE6CC'; ctx.beginPath(); ctx.arc(1560, 270, 120, 0, 7); ctx.fill();
+    }
+  });
+  // menu bar strip
+  piece(rect(100, 78, W - 200, 46, 14), '#FFF6EA', { border: 0, lift: 4, shadowA: 0.18 });
+  ctx.fillStyle = INK; ctx.font = '400 22px "ZCOOL KuaiLe"'; ctx.textBaseline = 'middle';
+  ctx.beginPath(); ctx.arc(132, 101, 9, 0, 7); ctx.fill(); ctx.fillStyle = CLAY; ctx.beginPath(); ctx.arc(132, 101, 4, 0, 7); ctx.fill();
+  ctx.fillStyle = INK; ctx.fillText('qn sandbox', 152, 102);
+  ctx.font = '400 20px "ZCOOL KuaiLe"'; let x = 300;
+  for (const s of ['会话', '配置档', '权限', '审计']) { ctx.fillText(s, x, 102); x += ctx.measureText(s).width + 30; }
+  ctx.textAlign = 'right'; ctx.fillText('10:24', W - 128, 102); ctx.textAlign = 'left';
+  // dock of paper tiles
+  const cols = ['#F28E6B', '#7FA7E0', '#86C79A', '#F2C14E', '#B79CE0'];
+  cols.forEach((c, i) => piece(rect(760 + i * 86, 912, 66, 66, 16), c, { border: 6, lift: 6 }));
+}
+
+function room() {
+  const x = 330, y = 210, w = 900, h = 590;
+  // box back wall (patterned paper) and floor
+  piece(rect(x, y, w, h, 18), '#FFF1DE', {
+    lift: 22, inner: () => {
+      ctx.fillStyle = '#F7DCC4';
+      for (let i = 0; i < 20; i++) { ctx.beginPath(); ctx.arc(x + 40 + (i % 10) * 90, y + 70 + Math.floor(i / 10) * 90, 9, 0, 7); ctx.fill(); }
+      ctx.fillStyle = '#EAC7A6'; ctx.beginPath(); ctx.moveTo(x, y + h - 170); ctx.lineTo(x + w, y + h - 170); ctx.lineTo(x + w, y + h); ctx.lineTo(x, y + h); ctx.fill();
+      ctx.fillStyle = '#E2BA97'; for (let i = 0; i < 9; i++) ctx.fillRect(x + i * 100 + 50, y + h - 170, 3, 170);
+    }
+  });
+  // props as paper cut-outs
+  piece(() => { ctx.beginPath(); ctx.ellipse(x + 430, y + h - 70, 250, 44, 0, 0, 7); }, '#E7A08A', { border: 6, lift: 4 });
+  piece(rect(x + 560, y + h - 135, 170, 64, 30), '#9DB1F0', { border: 7, lift: 8 });
+  piece(rect(x + 70, y + 230, 230, 14, 7), '#C99E7E', { border: 5, lift: 6 });
+  piece(rect(x + 92, y + 160, 120, 70, 10), '#7FA7E0', { border: 6, lift: 6 });
+  ctx.fillStyle = '#fff'; ctx.font = '600 17px "JetBrains Mono"'; ctx.fillText('my-app/', x + 108, y + 205);
+  piece(rect(x + 232, y + 172, 24, 58, 5), '#F2C14E', { border: 5, lift: 5 });
+  // lamp
+  piece(rect(x + 780, y + 200, 10, 250, 4), '#B8957A', { border: 5, lift: 6 });
+  piece(() => { ctx.beginPath(); ctx.moveTo(x + 730, y + 210); ctx.lineTo(x + 840, y + 210); ctx.lineTo(x + 815, y + 140); ctx.lineTo(x + 755, y + 140); ctx.closePath(); }, '#FFC96B', { border: 7, lift: 8 });
+  const lg = ctx.createRadialGradient(x + 785, y + 240, 10, x + 785, y + 300, 330);
+  lg.addColorStop(0, 'rgba(255,220,150,0.5)'); lg.addColorStop(1, 'rgba(255,220,150,0)'); ctx.fillStyle = lg; ctx.fillRect(x, y, w, h);
+  // Clawd: pixel sprite as a paper cut-out with a white border
+  const cv = document.createElement('canvas'); cv.width = 420; cv.height = 300; const c2 = cv.getContext('2d');
+  drawClawd(c2, 210, 260, 11, { eyes: 'happy', shadow: false });
+  const bd = document.createElement('canvas'); bd.width = 420; bd.height = 300; const b2 = bd.getContext('2d');
+  for (let a = 0; a < 16; a++) { const an = a / 16 * Math.PI * 2; b2.drawImage(cv, Math.cos(an) * 10, Math.sin(an) * 10); }
+  b2.globalCompositeOperation = 'source-in'; b2.fillStyle = '#FBF7EF'; b2.fillRect(0, 0, 420, 300);
+  b2.globalCompositeOperation = 'source-over'; b2.drawImage(cv, 0, 0);
+  b2.globalCompositeOperation = 'source-atop'; b2.fillStyle = b2.createPattern(grain, 'repeat'); b2.fillRect(0, 0, 420, 300);
+  ctx.save(); ctx.shadowColor = 'rgba(70,40,20,0.35)'; ctx.shadowBlur = 16; ctx.shadowOffsetX = 6; ctx.shadowOffsetY = 10;
+  ctx.drawImage(bd, x + 250, y + h - 330); ctx.restore();
+  // handle tag held up
+  ctx.save(); ctx.translate(x + 560, y + h - 300); ctx.rotate(-0.1);
+  piece(rect(0, 0, 250, 52, 8), '#FFF3CF', { border: 6, lift: 6 });
+  ctx.fillStyle = INK; ctx.font = '700 20px "JetBrains Mono"'; ctx.fillText('qn://handle/github', 16, 27);
+  ctx.restore();
+  // vellum "glass" front: tracing paper over the box opening, cut window in the middle
+  ctx.save();
+  ctx.fillStyle = 'rgba(255,255,255,0.18)'; rr(ctx, x - 6, y - 6, w + 12, h + 12, 22); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 3; rr(ctx, x - 6, y - 6, w + 12, h + 12, 22); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.beginPath(); ctx.moveTo(x + 60, y + 30); ctx.lineTo(x + 110, y + 30); ctx.lineTo(x + 30, y + 160); ctx.lineTo(x - 2, y + 160); ctx.fill();
+  ctx.restore();
+  // paper label on the box
+  ctx.save(); ctx.translate(x + w - 250, y - 30); ctx.rotate(0.03);
+  piece(rect(0, 0, 230, 54, 10), '#86C79A', { border: 6, lift: 6 });
+  ctx.fillStyle = '#fff'; ctx.font = '400 24px "ZCOOL KuaiLe"'; ctx.fillText('沙箱 · 默认拒绝', 22, 29);
+  ctx.restore();
+  return { x, y, w, h };
+}
+
+function hangingKey() {
+  // washi tape + string + key, outside the box
+  const px = 1490, py = 300;
+  ctx.save();
+  ctx.strokeStyle = '#C0473A'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(px, py); ctx.quadraticCurveTo(px + 6, py + 120, px + 2, py + 210); ctx.stroke();
+  ctx.translate(px - 60, py - 30); ctx.rotate(-0.12);
+  ctx.fillStyle = 'rgba(134,199,154,0.8)'; ctx.fillRect(0, 0, 130, 40);
+  ctx.fillStyle = 'rgba(255,255,255,0.35)'; for (let i = 0; i < 6; i++) ctx.fillRect(10 + i * 22, 0, 8, 40);
+  ctx.restore();
+  ctx.save(); ctx.translate(px + 2, py + 250); ctx.rotate(Math.PI / 2 + 0.08);
+  // paper key with border
+  ctx.shadowColor = 'rgba(70,40,20,0.3)'; ctx.shadowBlur = 18; ctx.shadowOffsetX = 8; ctx.shadowOffsetY = 12;
+  key(ctx, 0, 0, 38, { ink: '#FBF7EF', inkW: 18 });
+  ctx.shadowColor = 'transparent';
+  key(ctx, 0, 0, 38, { ink: '#FBF7EF', inkW: 16 });
+  key(ctx, 0, 0, 38, { color: '#F2B84B' });
+  ctx.restore();
+  // paper tag
+  ctx.save(); ctx.translate(1560, 600); ctx.rotate(0.06);
+  piece(rect(0, 0, 220, 92, 12), '#FFFDF6', { border: 6, lift: 8 });
+  ctx.fillStyle = INK; ctx.font = '400 26px "ZCOOL KuaiLe"'; ctx.fillText('真实钥匙', 20, 36);
+  ctx.font = '400 19px "ZCOOL KuaiLe"'; ctx.fillStyle = '#9A6B4E'; ctx.fillText('留在宿主侧，不进沙箱', 20, 70);
+  ctx.restore();
+}
+
+function caption(text, en) {
+  ctx.font = '400 42px "ZCOOL KuaiLe"'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = INK; ctx.lineWidth = 10; ctx.strokeText(text, W / 2, 860);
+  ctx.fillStyle = '#FFF6E6'; ctx.fillText(text, W / 2, 860);
+  ctx.font = '600 18px Fredoka'; ctx.strokeStyle = INK; ctx.lineWidth = 6; ctx.strokeText(en, W / 2, 898); ctx.fillStyle = '#FFE3C2'; ctx.fillText(en, W / 2, 898);
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+}
+
+window.render = (t) => {
+  desk();
+  screen();
+  room();
+  hangingKey();
+  caption('钥匙一直挂在外面，Agent 在里面安心干活。', 'The key stays outside. The agent works inside, at ease.');
+  ctx.fillStyle = 'rgba(0,0,0,0.004)'; ctx.fillRect(0, 0, 1, 1);
+};
+
+try { await loadFonts(); window.READY = true; } catch (e) { window.FAIL = String(e); }
+</script>
