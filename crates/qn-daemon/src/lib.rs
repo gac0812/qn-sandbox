@@ -81,6 +81,118 @@ impl ControlPlane {
         }
     }
 
+    /// Dispatches read-only MCP tools through the shared control plane.
+    ///
+    /// Mutating or credential-sensitive tools return a closed denial until
+    /// their authorization and mediation boundaries are connected.
+    pub async fn dispatch_mcp_request(&self, request: ToolRequest) -> ToolResult {
+        let request_id = request.request_id.clone();
+        if let Err(error) = request.validate() {
+            return invalid_result(request_id, error.to_string());
+        }
+        match request.tool {
+            qn_mcp::ToolName::ProfileList => self.dispatch_profile_list(request_id),
+            qn_mcp::ToolName::ProfileShow => self.dispatch_profile_show(request_id, &request),
+            qn_mcp::ToolName::SessionStatus => {
+                self.dispatch_session_status(request_id, &request).await
+            }
+            qn_mcp::ToolName::AuditQuery => self.dispatch_audit_query(request_id, &request).await,
+            qn_mcp::ToolName::SessionRun
+            | qn_mcp::ToolName::SessionStop
+            | qn_mcp::ToolName::McpRoutePlan => denied_result(request_id),
+        }
+    }
+
+    fn dispatch_profile_list(&self, request_id: String) -> ToolResult {
+        match self.list_profiles() {
+            Ok(profiles) => ok_result(
+                request_id,
+                serde_json::json!({
+                    "profiles": profiles.iter().map(|profile| serde_json::json!({
+                        "id": profile.id().as_str(),
+                        "version": profile.version().as_str(),
+                    })).collect::<Vec<_>>()
+                }),
+            ),
+            Err(error) => failed_result(request_id, error.to_string()),
+        }
+    }
+
+    fn dispatch_profile_show(&self, request_id: String, request: &ToolRequest) -> ToolResult {
+        let Some(value) = request
+            .arguments
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+        else {
+            return invalid_result(request_id, "profile id must be a string".into());
+        };
+        let Ok(id) = qn_core::ProfileRef::try_from(value) else {
+            return invalid_result(request_id, "profile id is invalid".into());
+        };
+        match self.resolve_profile(id) {
+            Ok(profile) => ok_result(
+                request_id,
+                serde_json::json!({
+                    "id": profile.summary().id().as_str(),
+                    "version": profile.summary().version().as_str(),
+                    "state_dir": profile.state_dir(),
+                    "network_hosts": profile.network_hosts(),
+                }),
+            ),
+            Err(error) => failed_result(request_id, error.to_string()),
+        }
+    }
+
+    async fn dispatch_session_status(
+        &self,
+        request_id: String,
+        request: &ToolRequest,
+    ) -> ToolResult {
+        let Some(value) = request
+            .arguments
+            .get("session")
+            .and_then(serde_json::Value::as_str)
+        else {
+            return invalid_result(request_id, "session must be a string".into());
+        };
+        let Ok(id) = SessionId::try_from(value) else {
+            return invalid_result(request_id, "session id is invalid".into());
+        };
+        match self.status_session(id).await {
+            Ok(status) => ok_result(
+                request_id,
+                serde_json::json!({
+                    "session": status.session().to_string(),
+                    "profile": status.profile().to_string(),
+                    "exit_code": status.exit_code(),
+                    "cleanup": "unconfirmed",
+                }),
+            ),
+            Err(error) => failed_result(request_id, error.to_string()),
+        }
+    }
+
+    async fn dispatch_audit_query(&self, request_id: String, request: &ToolRequest) -> ToolResult {
+        let Some(value) = request
+            .arguments
+            .get("session")
+            .and_then(serde_json::Value::as_str)
+        else {
+            return invalid_result(request_id, "session must be a string".into());
+        };
+        let Ok(id) = SessionId::try_from(value) else {
+            return invalid_result(request_id, "session id is invalid".into());
+        };
+        match self.read_audit(id).await {
+            Ok(timeline) => ok_result(
+                request_id,
+                serde_json::to_value(timeline)
+                    .unwrap_or_else(|_| serde_json::json!({"error": "audit serialization failed"})),
+            ),
+            Err(error) => failed_result(request_id, error.to_string()),
+        }
+    }
+
     /// Builds the local composition from an absolute qn home.
     ///
     /// # Errors
@@ -241,6 +353,44 @@ impl ControlPlane {
         mode: StopMode,
     ) -> Result<StopReport, SessionError> {
         qn_bootstrap::stop_session(&self.paths, id, mode).await
+    }
+}
+
+fn ok_result(request_id: String, value: serde_json::Value) -> ToolResult {
+    ToolResult {
+        schema_version: qn_mcp::CATALOG_SCHEMA_VERSION,
+        request_id,
+        outcome: ToolOutcome::Ok { value },
+    }
+}
+fn invalid_result(request_id: String, message: String) -> ToolResult {
+    ToolResult {
+        schema_version: qn_mcp::CATALOG_SCHEMA_VERSION,
+        request_id,
+        outcome: ToolOutcome::Error {
+            code: qn_mcp::ResultErrorCode::InvalidArguments,
+            message,
+        },
+    }
+}
+fn failed_result(request_id: String, message: String) -> ToolResult {
+    ToolResult {
+        schema_version: qn_mcp::CATALOG_SCHEMA_VERSION,
+        request_id,
+        outcome: ToolOutcome::Error {
+            code: qn_mcp::ResultErrorCode::Failed,
+            message,
+        },
+    }
+}
+fn denied_result(request_id: String) -> ToolResult {
+    ToolResult {
+        schema_version: qn_mcp::CATALOG_SCHEMA_VERSION,
+        request_id,
+        outcome: ToolOutcome::Error {
+            code: qn_mcp::ResultErrorCode::Denied,
+            message: "MCP operation is not enabled on this control-plane boundary".into(),
+        },
     }
 }
 
