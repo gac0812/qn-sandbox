@@ -1224,3 +1224,52 @@ mod mapping_tests {
         assert_eq!(card.event_count, 1);
     }
 }
+
+/// Builds a complete UI snapshot from already mapped view states.
+#[must_use]
+pub fn assemble_snapshot(
+    profiles: ViewState<Vec<ProfileCard>>,
+    permissions: ViewState<PermissionPosture>,
+    sessions: ViewState<Vec<SessionCard>>,
+    audit: ViewState<Vec<AuditCard>>,
+) -> ControlPlaneSnapshot {
+    ControlPlaneSnapshot {
+        profiles,
+        permissions,
+        sessions,
+        audit,
+    }
+}
+
+#[cfg(test)]
+mod assembler_tests {
+    use super::*;
+
+    #[test]
+    fn assembler_preserves_each_view_state_without_cross_view_defaults() {
+        let snapshot = assemble_snapshot(
+            ViewState::Loading,
+            ViewState::Unavailable {
+                reason: UnavailableReason::NoEvidence,
+            },
+            ViewState::Ready(vec![]),
+            ViewState::Failed {
+                code: FailureCode::InvalidResponse,
+            },
+        );
+        assert!(matches!(snapshot.profiles, ViewState::Loading));
+        assert!(matches!(
+            snapshot.permissions,
+            ViewState::Unavailable {
+                reason: UnavailableReason::NoEvidence
+            }
+        ));
+        assert!(matches!(snapshot.sessions, ViewState::Ready(_)));
+        assert!(matches!(
+            snapshot.audit,
+            ViewState::Failed {
+                code: FailureCode::InvalidResponse
+            }
+        ));
+    }
+}
