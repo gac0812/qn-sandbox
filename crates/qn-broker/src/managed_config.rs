@@ -35,6 +35,9 @@ impl fmt::Debug for ManagedConfigBinding {
 /// Publication failure with no untrusted configuration values in its formatting.
 #[derive(Debug, thiserror::Error)]
 pub enum ManagedConfigError {
+    /// Failed to serialize the fixed field set; no user credential is accepted.
+    #[error("failed to encode managed config; verify the application template: {0}")]
+    Encoding(#[from] toml::ser::Error),
     /// The input exceeds the parser's bounded allocation budget.
     #[error("managed config exceeds 4096 bytes; provide only the approved routing fields")]
     TooLarge,
