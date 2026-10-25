@@ -3,6 +3,7 @@
 use camino::Utf8PathBuf;
 use process_wrap::tokio::TokioCommandWrap;
 use qn_infra::process::{self, CmdSpec, ProcessPolicy, TerminationSafety};
+use qn_nono::session::{NativeSessionState, SessionReader};
 use qn_nono::{NonoError, args::NonoSessionId, audit::AuditReader};
 use std::{error::Error, fs, sync::Arc};
 
@@ -33,8 +34,23 @@ async fn main() -> Result<(), Box<dyn Error>> {
             };
             println!("nono {version}");
         }
-        Some("audit") => fake_query()?,
+        Some("audit" | "ps" | "inspect") => fake_query()?,
         Some("--parent") => verify(binary).await?,
+        Some("--native-session") => {
+            let reader = SessionReader::new(
+                std::env::var("QN_TEST_NONO")?.into(),
+                std::env::var("QN_TEST_ROOT")?.into(),
+                Arc::new(QueryPolicy),
+            )?;
+            let id = qn_core::SessionId::try_from(std::env::var("QN_TEST_SESSION")?.as_str())?;
+            let record = reader.find(id).await?.ok_or("native session missing")?;
+            assert_eq!(
+                record.state(),
+                NativeSessionState::Running,
+                "native running smoke"
+            );
+            reader.inspect(&record).await?;
+        }
         Some("--native") => {
             let reader = AuditReader::new(
                 std::env::var("QN_TEST_NONO")?.into(),
@@ -63,6 +79,63 @@ async fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+async fn verify_sessions(binary: &Utf8PathBuf, root: &Utf8PathBuf) -> Result<(), Box<dyn Error>> {
+    let reader = SessionReader::new(binary.clone(), root.clone(), Arc::new(QueryPolicy))?;
+    let id = qn_core::SessionId::try_from("sxn-019a1234-5678-7abc-8123-000000000001")?;
+    fs::write(
+        root.join("sessions.json"),
+        include_str!("fixtures/nono-0.80.0/ps-running.json"),
+    )?;
+    fs::write(
+        root.join("inspect.json"),
+        include_str!("fixtures/nono-0.80.0/inspect-running.json"),
+    )?;
+    assert!(
+        reader.find(qn_core::SessionId::new()).await?.is_none(),
+        "foreign name stays unbound"
+    );
+    let found = reader.find(id).await?.ok_or("fixture session missing")?;
+    assert_eq!(found.session(), id, "preserve expected qn name");
+    assert_eq!(found.state(), NativeSessionState::Running, "native running");
+    let args: Vec<String> = serde_json::from_slice(&fs::read(root.join("inspect-args.json"))?)?;
+    assert_eq!(
+        args,
+        ["inspect", "--json", "--", ID],
+        "inspect only the full native ID"
+    );
+    let mut inspected: serde_json::Value =
+        serde_json::from_slice(&fs::read(root.join("inspect.json"))?)?;
+    inspected["status"] = serde_json::json!("exited");
+    inspected["exit_code"] = serde_json::json!(7);
+    fs::write(root.join("inspect.json"), serde_json::to_vec(&inspected)?)?;
+    let ended = reader.inspect(&found).await?;
+    assert_eq!(
+        (ended.state(), ended.exit_code()),
+        (NativeSessionState::Exited, Some(7)),
+        "observe exit without inventing cleanup"
+    );
+    inspected["name"] = serde_json::json!("synthetic-secret");
+    fs::write(root.join("inspect.json"), serde_json::to_vec(&inspected)?)?;
+    let error = reader
+        .inspect(&found)
+        .await
+        .expect_err("refuse changed qn name");
+    assert!(
+        !format!("{error:?} {error}").contains("synthetic-secret"),
+        "redact response"
+    );
+    fs::write(root.join("mode"), "fail")?;
+    assert!(
+        matches!(
+            reader.find(id).await,
+            Err(NonoError::CommandFailed { code: Some(7), .. })
+        ),
+        "ps nonzero is not absence"
+    );
+    fs::write(root.join("mode"), "ok")?;
+    Ok(())
+}
+
 fn fake_query() -> Result<(), Box<dyn Error>> {
     assert!(std::env::var_os("QN_AUDIT_CANARY").is_none());
     let root = path(std::env::current_dir()?.canonicalize()?)?;
@@ -81,7 +154,16 @@ fn fake_query() -> Result<(), Box<dyn Error>> {
             std::thread::park();
         }
     }
-    print!("{}", fs::read_to_string(root.join("response"))?);
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let response = match args.first().map(String::as_str) {
+        Some("ps") => "sessions.json",
+        Some("inspect") => {
+            fs::write(root.join("inspect-args.json"), serde_json::to_vec(&args)?)?;
+            "inspect.json"
+        }
+        _ => "response",
+    };
+    print!("{}", fs::read_to_string(root.join(response))?);
     if mode == "fail" {
         std::process::exit(7);
     }
@@ -93,6 +175,7 @@ async fn verify(binary: Utf8PathBuf) -> Result<(), Box<dyn Error>> {
     let directory = tempfile::tempdir()?;
     let root = path(directory.path().canonicalize()?)?;
     fs::write(root.join("mode"), "ok")?;
+    verify_sessions(&binary, &root).await?;
     let reader = AuditReader::new(binary.clone(), root.clone(), Arc::new(QueryPolicy))?;
     fs::write(root.join("response"), LIST)?;
     assert_eq!(reader.list().await?.len(), 3);
