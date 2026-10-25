@@ -134,11 +134,12 @@ pub(crate) fn run(command: &AuditCommand, output: &mut dyn Write) -> Result<(), 
     };
     let session = SessionId::try_from(id.as_str())?;
     let paths = qn_config::paths::QnPaths::resolve()?;
-    let query = qn_bootstrap::audit_query(paths.audit)?;
+    let control = qn_daemon::ControlPlane::new(paths.clone()).map_err(daemon_error)?;
+    let query = control.audit_query();
     if matches!(command, AuditCommand::Follow { .. }) {
         let runtime = runtime()?;
         let result = runtime.block_on(follow::stream(
-            &query,
+            query,
             session,
             filter,
             *json,
@@ -148,7 +149,7 @@ pub(crate) fn run(command: &AuditCommand, output: &mut dyn Write) -> Result<(), 
         runtime.shutdown_timeout(Duration::from_millis(100));
         result
     } else {
-        let mut timeline = read(&query, session)?;
+        let mut timeline = read(query, session)?;
         timeline.events.retain(|event| filter.matches(event));
         render(&timeline, *json, output)
     }
@@ -171,6 +172,16 @@ fn read(query: &dyn AuditQuery, session: SessionId) -> Result<AuditTimeline, Err
     // Bound this read-only CLI wait too; the OS read may outlive its timeout.
     runtime.shutdown_timeout(Duration::from_millis(100));
     Ok(result?)
+}
+
+fn daemon_error(error: qn_daemon::Error) -> Error {
+    match error {
+        qn_daemon::Error::Setup(error) => Error::Setup(error),
+        qn_daemon::Error::Profile(error) => Error::Profile(error),
+        qn_daemon::Error::Audit(error) => Error::Audit(error),
+        qn_daemon::Error::NativeAudit(error) => Error::NativeAudit(error),
+        _ => Error::Runtime(std::io::Error::other("control-plane composition failed")),
+    }
 }
 
 fn runtime() -> Result<tokio::runtime::Runtime, Error> {

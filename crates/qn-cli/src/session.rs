@@ -2,7 +2,6 @@
 
 use crate::Error;
 use camino::Utf8PathBuf;
-use qn_core::profile::ProfileRegistry as _;
 use qn_core::runtime::{ObservedNativeState, RunEnd, RunPhase, StopMode};
 use qn_core::{ProfileRef, SessionId};
 use std::{io::Write, time::Duration};
@@ -15,8 +14,8 @@ pub(crate) fn run(
 ) -> Result<(), Error> {
     let profile = ProfileRef::try_from(profile)?;
     let paths = qn_config::paths::QnPaths::resolve()?;
-    let registry = qn_bootstrap::profile_registry(&paths)?;
-    let resolved = registry.resolve(profile.clone())?;
+    let control = qn_daemon::ControlPlane::new(paths.clone()).map_err(daemon_error)?;
+    let resolved = control.resolve_profile(profile.clone())?;
     let workdir = std::env::current_dir().map_err(|_| Error::Workdir)?;
     let workdir = Utf8PathBuf::from_path_buf(workdir).map_err(|_| Error::Workdir)?;
     let spec = qn_core::RunSpec::new(SessionId::new(), profile, command, workdir)?;
@@ -27,7 +26,7 @@ pub(crate) fn run(
         let _ = tokio::signal::ctrl_c().await;
         signal.cancel();
     });
-    let result = runtime.block_on(qn_bootstrap::run_session(&paths, spec, &resolved, cancel));
+    let result = runtime.block_on(control.run_session(spec, &resolved, cancel));
     handle.abort();
     runtime.shutdown_timeout(Duration::from_millis(100));
     let report = result?;
@@ -71,8 +70,9 @@ pub(crate) fn run(
 pub(crate) fn status(session: &str, json: bool, output: &mut dyn Write) -> Result<(), Error> {
     let id = SessionId::try_from(session)?;
     let paths = qn_config::paths::QnPaths::resolve()?;
+    let control = qn_daemon::ControlPlane::new(paths.clone()).map_err(daemon_error)?;
     let runtime = runtime()?;
-    let result = runtime.block_on(qn_bootstrap::status_session(&paths, id));
+    let result = runtime.block_on(control.status_session(id));
     runtime.shutdown_timeout(Duration::from_millis(100));
     let status = result?;
     if json {
@@ -130,8 +130,9 @@ pub(crate) fn stop(
         }
     };
     let paths = qn_config::paths::QnPaths::resolve()?;
+    let control = qn_daemon::ControlPlane::new(paths.clone()).map_err(daemon_error)?;
     let runtime = runtime()?;
-    let result = runtime.block_on(qn_bootstrap::stop_session(&paths, id, mode));
+    let result = runtime.block_on(control.stop_session(id, mode));
     runtime.shutdown_timeout(Duration::from_millis(100));
     let report = result?;
     if json {
@@ -152,6 +153,16 @@ pub(crate) fn stop(
     )?;
     output.flush()?;
     Ok(())
+}
+
+fn daemon_error(error: qn_daemon::Error) -> Error {
+    match error {
+        qn_daemon::Error::Setup(error) => Error::Setup(error),
+        qn_daemon::Error::Profile(error) => Error::Profile(error),
+        qn_daemon::Error::Audit(error) => Error::Audit(error),
+        qn_daemon::Error::NativeAudit(error) => Error::NativeAudit(error),
+        _ => Error::Runtime(std::io::Error::other("control-plane composition failed")),
+    }
 }
 
 fn runtime() -> Result<tokio::runtime::Runtime, Error> {

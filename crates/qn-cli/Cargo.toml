@@ -15,6 +15,7 @@ camino = "1"
 clap = { version = "4.6.7", features = ["derive"] }
 qn-bootstrap = { path = "../qn-bootstrap", version = "0.1.0" }
 qn-config = { path = "../qn-config", version = "0.1.0" }
+qn-daemon = { path = "../qn-daemon", version = "0.1.0" }
 qn-core = { path = "../qn-core", version = "0.1.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

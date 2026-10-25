@@ -1,18 +1,32 @@
 //! Present the core installation consumer without importing engine adapters.
 use crate::{Error, escape_terminal_text};
-use qn_core::setup::{EngineInstallation, EngineSetup, SetupOperation};
+use qn_core::setup::{EngineInstallation, SetupOperation};
 use std::io::Write;
 
 pub(crate) fn inspect(
     operation: SetupOperation,
     paths: &qn_config::paths::QnPaths,
 ) -> Result<EngineInstallation, Error> {
-    let setup = qn_bootstrap::engine_setup(paths)?;
+    let control = qn_daemon::ControlPlane::new(paths.clone()).map_err(daemon_error)?;
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
-    // Keep the runtime alive until the owned blocking worker completes.
-    Ok(runtime.block_on(setup.run(operation))?)
+    let result = match operation {
+        SetupOperation::Inspect => runtime.block_on(control.inspect_engine()),
+        SetupOperation::Install => runtime.block_on(control.install_engine()),
+    };
+    runtime.shutdown_timeout(std::time::Duration::from_millis(100));
+    Ok(result?)
+}
+
+fn daemon_error(error: qn_daemon::Error) -> crate::Error {
+    match error {
+        qn_daemon::Error::Setup(error) => crate::Error::Setup(error),
+        qn_daemon::Error::Profile(error) => crate::Error::Profile(error),
+        qn_daemon::Error::Audit(error) => crate::Error::Audit(error),
+        qn_daemon::Error::NativeAudit(error) => crate::Error::NativeAudit(error),
+        _ => crate::Error::Runtime(std::io::Error::other("control-plane composition failed")),
+    }
 }
 
 pub(crate) fn render(

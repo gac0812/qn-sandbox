@@ -1,12 +1,19 @@
 //! Native evidence is displayed separately from the broker monotonic timeline.
 use crate::Error;
-use qn_core::{SessionId, native_audit::NativeAuditQuery};
+use qn_core::SessionId;
 use std::{io::Write, time::Duration};
 
 pub(super) fn run(id: &str, json: bool, output: &mut dyn Write) -> Result<(), Error> {
     let session = SessionId::try_from(id)?;
     let paths = qn_config::paths::QnPaths::resolve()?;
-    let query = qn_bootstrap::native_audit_query(&paths)?;
+    let control = qn_daemon::ControlPlane::new(paths.clone()).map_err(|error| match error {
+        qn_daemon::Error::Setup(error) => Error::Setup(error),
+        qn_daemon::Error::Profile(error) => Error::Profile(error),
+        qn_daemon::Error::Audit(error) => Error::Audit(error),
+        qn_daemon::Error::NativeAudit(error) => Error::NativeAudit(error),
+        _ => Error::Runtime(std::io::Error::other("control-plane composition failed")),
+    })?;
+    let query = control.native_audit_query();
     let runtime = super::runtime()?;
     let result = runtime.block_on(query.read(session));
     runtime.shutdown_timeout(Duration::from_millis(100));
