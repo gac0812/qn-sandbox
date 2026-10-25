@@ -129,31 +129,9 @@ qn stop "$SESSION_ID"
 
 ### 目标架构
 
-```mermaid
-flowchart TB
-    subgraph surface["🖥️ 命令行 + 桌面面板"]
-        cli["qn CLI<br/>install · run · status · audit · stop"]
-        ui["桌面控制面板（Tauri）<br/>会话 · 配置档 · 权限 · 审计"]
-    end
-    subgraph host["🔑 宿主侧 · 钥匙只在这里"]
-        broker["凭证代理<br/>phantom token + 上游 allowlist"]
-        gateway["MCP 网关<br/>代答 MCP 服务器认证"]
-        audit["审计事件"]
-    end
-    subgraph box["🧱 沙箱 · nono"]
-        agent["Claude Code · Codex · dsh<br/>只持有句柄<br/>Landlock / Seatbelt 强制隔离"]
-    end
-    os["⚙️ 操作系统内核隔离<br/>macOS 原生 · Windows 经 WSL2"]
+<img src="docs/diagrams/homepage-architecture.svg" width="900" alt="qn sandbox 目标架构：控制面、宿主凭证代理、MCP 网关、nono 沙箱与操作系统边界">
 
-    cli --> broker
-    ui --> broker
-    agent -->|句柄| broker
-    agent -->|句柄| gateway
-    broker -->|附加真实凭证| upstream(("上游服务<br/>GitHub / API"))
-    gateway --> upstream
-    box -.->|越界尝试被拦截| audit
-    box --- os
-```
+[Mermaid 源码](docs/diagrams/homepage-architecture.mmd) · [重新生成图表](docs/diagrams/README.md)
 
 分层、依赖方向和当前实现边界见[架构规范](docs/spec/01-architecture.md)与[架构拆分](docs/architecture-breakdown.md)。
 
