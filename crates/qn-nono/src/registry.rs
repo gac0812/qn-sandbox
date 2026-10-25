@@ -388,22 +388,27 @@ impl HostProfileRegistry {
             .prefix(".publish-")
             .tempdir_in(&versions)
             .map_err(ProfileError::Io)?;
-        let mut profile =
-            fs::File::create(staging.path().join(PROFILE_FILE)).map_err(ProfileError::Io)?;
-        profile
-            .write_all(asset.as_bytes())
-            .map_err(ProfileError::Io)?;
-        profile.sync_all().map_err(ProfileError::Io)?;
-        let mut stored =
-            fs::File::create(staging.path().join(VERSION_MANIFEST)).map_err(ProfileError::Io)?;
-        stored
-            .write_all(
-                serde_json::to_string(&manifest)
-                    .map_err(|_| ProfileError::InvalidCatalog)?
-                    .as_bytes(),
-            )
-            .map_err(ProfileError::Io)?;
-        stored.sync_all().map_err(ProfileError::Io)?;
+        {
+            // 句柄必须在此块内关闭：Windows 上重命名目录要求其下没有打开的
+            // 文件句柄（error 5 / ACCESS_DENIED），POSIX 无此限制——macOS 上
+            // 先前因句柄未关也能通过，故该缺陷在 macOS 不可见。
+            let mut profile =
+                fs::File::create(staging.path().join(PROFILE_FILE)).map_err(ProfileError::Io)?;
+            profile
+                .write_all(asset.as_bytes())
+                .map_err(ProfileError::Io)?;
+            profile.sync_all().map_err(ProfileError::Io)?;
+            let mut stored = fs::File::create(staging.path().join(VERSION_MANIFEST))
+                .map_err(ProfileError::Io)?;
+            stored
+                .write_all(
+                    serde_json::to_string(&manifest)
+                        .map_err(|_| ProfileError::InvalidCatalog)?
+                        .as_bytes(),
+                )
+                .map_err(ProfileError::Io)?;
+            stored.sync_all().map_err(ProfileError::Io)?;
+        }
         fs::rename(staging.path(), &target).map_err(ProfileError::Io)?;
         Ok(())
     }
