@@ -10,7 +10,7 @@ R6 的 `#[cfg(target_os)]` 白名单位置之一）。
 | `paths` | 目录布局唯一权威（`QnPaths`：root/config.toml/token/sessions.json/profiles/audit/logs/cache）；`QN_HOME` 覆盖 > 平台默认（Windows `%LOCALAPPDATA%\qn`，Unix `~/.qn`）；**只解析不创建** |
 | `settings` | `Config`：config.toml 加载 + 环境覆盖，语义 **env > toml > 默认**；首字段 `default_timeout_ms` |
 | `consts` | 单点常量：`NONO_PINNED_VERSION`（锁版本跟版，spec 04 §6）、`WSL_MIN_KERNEL_SEMVER`（Landlock 网络下限，spike① #16） |
-| `error`（私有 `mod`，经 crate 根 `pub use` 导出） | `Error::PlatformRootUnavailable` / `Error::Read` / `Error::Parse` |
+| `error`（私有 `mod`，经 crate 根 `pub use` 导出） | `Error::PlatformRootUnavailable` / `Error::EnvironmentNotUnicode` / `Error::Read` / `Error::Parse` |
 
 ## 约束
 
@@ -20,6 +20,9 @@ R6 的 `#[cfg(target_os)]` 白名单位置之一）。
 - 环境读取是薄封装（`resolve`/`apply_env_overrides`），核心逻辑接受注入
   （`resolve_with`/`apply_env_overrides_with`）——edition 2024 下 `set_var`
   为 unsafe 且 workspace forbid，测试不许改进程环境。
+- 环境变量存在但不是合法 UTF-8 时 fail closed，返回
+  `Error::EnvironmentNotUnicode`，不回显非法原始字节。
+- TOML 错误只暴露脱敏后的类别及行列，不转储配置源码、字段名或字段值。
 
 ## 非目标
 

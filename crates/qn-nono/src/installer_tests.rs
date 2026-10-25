@@ -138,6 +138,80 @@ fn it_rejects_a_nested_binary_without_replacing_the_existing_file() {
 }
 
 #[test]
+fn it_inspects_installed_bytes_without_repairing_or_creating_the_root() {
+    let absent = tempfile::tempdir().unwrap();
+    let missing = absent.path().join("absent");
+    assert!(matches!(
+        super::verify_installed_artifact(&missing, &fixture_artifact()),
+        Err(InstallerError::InstallationIntegrity)
+    ));
+    assert!(!missing.exists());
+    let (root, artifact) = cached_fixture(&fixture_archive());
+    let binary = super::install_artifact(root.path(), &artifact)
+        .unwrap()
+        .path;
+    let before = fs::metadata(&binary).unwrap().modified().unwrap();
+    super::verify_installed_artifact(root.path(), &artifact).unwrap();
+    assert_eq!(fs::metadata(&binary).unwrap().modified().unwrap(), before);
+    for replacement in [b"binary-BYTES".as_slice(), b"larger malicious executable"] {
+        fs::write(&binary, replacement).unwrap();
+        assert!(matches!(
+            super::verify_installed_artifact(root.path(), &artifact),
+            Err(InstallerError::InstallationIntegrity)
+        ));
+        assert_eq!(fs::read(&binary).unwrap(), replacement);
+    }
+    super::install_artifact(root.path(), &artifact).unwrap();
+    fs::write(
+        root.path()
+            .join(manifest::LOCKED_NONO_VERSION)
+            .join(artifact.archive_name),
+        b"bad cache",
+    )
+    .unwrap();
+    assert!(matches!(
+        super::verify_installed_artifact(root.path(), &artifact),
+        Err(InstallerError::ChecksumMismatch { .. })
+    ));
+    assert_eq!(fs::read(&binary).unwrap(), b"binary-bytes");
+}
+
+#[test]
+fn it_refuses_nonregular_installed_targets() {
+    let (root, artifact) = cached_fixture(&fixture_archive());
+    let binary = root.path().join(manifest::LOCKED_NONO_VERSION).join("nono");
+    fs::create_dir(&binary).unwrap();
+    assert!(matches!(
+        super::verify_installed_artifact(root.path(), &artifact),
+        Err(InstallerError::InstallationIntegrity)
+    ));
+}
+
+#[cfg(unix)]
+#[test]
+fn it_refuses_symlinked_binary_and_cache() {
+    let (root, artifact) = cached_fixture(&fixture_archive());
+    let binary = super::install_artifact(root.path(), &artifact)
+        .unwrap()
+        .path;
+    let cache = root
+        .path()
+        .join(manifest::LOCKED_NONO_VERSION)
+        .join(artifact.archive_name);
+    for path in [binary, cache] {
+        let saved = path.with_extension("saved");
+        fs::rename(&path, &saved).unwrap();
+        std::os::unix::fs::symlink(&saved, &path).unwrap();
+        assert!(matches!(
+            super::verify_installed_artifact(root.path(), &artifact),
+            Err(InstallerError::InstallationIntegrity)
+        ));
+        fs::remove_file(&path).unwrap();
+        fs::rename(saved, path).unwrap();
+    }
+}
+
+#[test]
 fn it_uses_independent_staging_for_concurrent_same_target_installs() {
     let (root, artifact) = cached_fixture(&fixture_archive());
     let barrier = std::sync::Barrier::new(4);
@@ -176,6 +250,8 @@ async fn it_repairs_and_probes_the_real_pinned_binary_offline() {
     let installed = tokio::task::spawn_blocking(move || {
         let installed = super::install(&options)?;
         super::install(&options)?;
+        let inspected = super::verify_installation(&options)?;
+        assert_eq!(inspected.path, installed.path);
         Ok::<_, InstallerError>(installed)
     })
     .await

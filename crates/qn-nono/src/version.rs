@@ -81,6 +81,8 @@ mod tests {
             success: true,
             stdout: stdout.to_owned(),
             stderr: String::new(),
+            stdout_raw: stdout.as_bytes().to_vec(),
+            stderr_raw: Vec::new(),
             stdout_truncated: false,
             stderr_truncated: false,
             duration: Duration::ZERO,
