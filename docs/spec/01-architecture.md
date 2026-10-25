@@ -164,6 +164,16 @@ Noise NNpsk0/25519/ChaChaPoly/SHA256，PSK 仅在宿主私有 binding；grant �
 只允许尾部未完成行作为 partial 展示。native/fs 拒绝不从 broker 推断，跨源顺序与 follow
 待真实消费者实现。沿用 #14/#47 用户委托授权，不声称 B/C 个人审批；决定见 #110。
 
+### 4.3 引擎安装与诊断契约（#114/#117）
+
+按 #14/#47 用户委托，由已本地验证的 install/doctor 消费者推动最小 EngineSetup port：
+`run(SetupOperation::{Install,Inspect}) -> SetupFuture`；future 输出
+`Result<EngineInstallation,SetupError>`。core 仅承载 std/camino 类型，不依赖 adapter 或运行时。
+Install 显式下载/修复；Inspect 不下载/修复，须先验证完整性再运行版本探测。
+成功只证明托管引擎字节/版本，不证明隔离、凭证、完整执行树清理或 WSL 就绪。
+调用方等待操作完成，丢弃 future 不保证阻塞 IO 取消；adapter 脱敏全部公开错误链，
+surface 转义路径控制字符。#117 仅发布契约，bootstrap/CLI/adapter 接线另见 #114。
+
 ## 5. 数据流（两个代表场景）
 
 **场景 A：`qn run --agent claude-code`（P0 主路径）**

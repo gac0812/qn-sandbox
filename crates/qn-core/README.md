@@ -8,3 +8,9 @@
 AuditQuery（#110）由首个 CLI 消费者推动：只读、单会话、显式 source/integrity/state，
 不暴露 adapter 文件路径或自由文本。事件序号仅在单 journal 内排序，不伪造全局 monotonic。
 ObservedClosed 不代表沙箱 Stopped、完整送达或防篡改；native/fs 事件与 follow 仍未实现。
+
+EngineSetup（#114/#117）由实际 CLI install/doctor 消费者推动；本 PR 只发布契约，
+实现仍在 #114 本地集成。Install 允许显式安装/修复，Inspect 禁止下载/修复，
+完整性通过后才执行版本探测；结果不声明沙箱策略、凭证或完整执行树清理就绪。
+调用方必须等待 future 完成；丢弃 future 不保证阻塞 IO 取消/回滚。adapter 必须对
+错误 Display/Debug/来源链脱敏，终端呈现方必须转义路径。无新增依赖或平台类型。
