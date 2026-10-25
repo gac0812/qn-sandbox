@@ -67,3 +67,29 @@ pub(crate) fn render_json(
     writeln!(output, "{}", serde_json::to_string(&report)?)?;
     Ok(())
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::render_json;
+    use qn_core::setup::EngineInstallation;
+    use serde_json::Value;
+
+    #[test]
+    fn json_report_is_versioned_and_explicit_about_runtime_checks() {
+        let installation = EngineInstallation {
+            engine: "nono",
+            version: "0.80.0",
+            path: "/private/qn/cache/nono".into(),
+        };
+        let mut output = Vec::new();
+        render_json(&installation, &mut output).unwrap();
+        let report: Value = serde_json::from_slice(&output).unwrap();
+        assert_eq!(report["schema_version"], 1);
+        assert_eq!(report["installation"], "verified");
+        assert_eq!(report["runtime_checks"], "not_checked");
+        assert_eq!(report["engine"]["name"], "nono");
+        assert_eq!(report["engine"]["version"], "0.80.0");
+        assert_eq!(report["engine"]["binary"], "/private/qn/cache/nono");
+    }
+}
