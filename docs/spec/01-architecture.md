@@ -85,10 +85,12 @@ qn-nono / qn-wsl ──► 外部：nono 二进制、wsl.exe（经 qn-infra::pro
 | `qn-core` | `qn-config`、`qn-infra` |
 | 适配器 `qn-nono/broker/gateway/wsl/vm` | `qn-core`、基础层 |
 | `qn-bootstrap` | `qn-core`、适配器、基础层 |
-| `qn-cli` / `qn-daemon` | `qn-core`、`qn-bootstrap`、基础层 |
+| `qn-cli` | `qn-core`、`qn-bootstrap`、基础层 |
+| `qn-daemon` | `qn-core`、`qn-bootstrap`、`qn-mcp`、基础层 |
 | `qn-ui` / `qn-mcp` | `qn-core`、基础层 |
 
 新 workspace crate 必须显式归类；`qn-` 内部依赖必须来自对应 workspace 路径。
+`qn-daemon → qn-mcp` 是只读 MCP catalog/dispatch contract 的受控 surface 依赖；daemon 不绕过 qn-core、broker 或 gateway。
 第三方依赖仍由 cargo-deny 检查。门禁检查依赖声明，不证明 Rust 源码/外部进程调用
 满足安全边界，也不代替代码审查。策略修改须同步本节与检查器测试。
 

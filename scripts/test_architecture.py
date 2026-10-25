@@ -13,7 +13,7 @@ from check_architecture import main, violations
 
 
 def metadata(edge=None):
-    names = ["qn-cli", "qn-core", "qn-nono", "qn-config", "qn-infra", "qn-bootstrap", "qn-gateway", "qn-ui"]
+    names = ["qn-cli", "qn-core", "qn-nono", "qn-config", "qn-infra", "qn-bootstrap", "qn-daemon", "qn-gateway", "qn-ui", "qn-mcp"]
     packages = [
         {"id": name, "name": name, "manifest_path": f"/workspace/{name}/Cargo.toml",
          "dependencies": []}
@@ -33,6 +33,7 @@ class ArchitectureTests(unittest.TestCase):
     def test_current_layer_directions(self):
         for source, target in [
             ("qn-cli", "qn-core"), ("qn-cli", "qn-bootstrap"),
+            ("qn-daemon", "qn-mcp"),
             ("qn-bootstrap", "qn-nono"), ("qn-nono", "qn-core"),
             ("qn-core", "qn-config"), ("qn-nono", "qn-infra"),
         ]:
