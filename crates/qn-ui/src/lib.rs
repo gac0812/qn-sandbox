@@ -1036,3 +1036,75 @@ mod session_model_tests {
         assert!(!encoded.contains("secret"));
     }
 }
+
+/// Safe audit view model for the desktop shell.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct AuditModel {
+    /// Base audit summary.
+    pub card: AuditCard,
+    /// Whether the UI may present the snapshot as complete.
+    pub completeness: AuditCompleteness,
+    /// Whether the UI may offer refresh/follow actions.
+    pub can_refresh: bool,
+}
+
+/// Completeness posture derived from integrity and journal state.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum AuditCompleteness {
+    /// Evidence is explicitly partial/open or has unverified provenance.
+    Incomplete,
+    /// Evidence has an observed closed boundary but remains unverified.
+    ObservedClosedUnverified,
+}
+
+impl AuditModel {
+    /// Builds a safe audit model without upgrading provenance claims.
+    #[must_use]
+    pub fn new(card: AuditCard) -> Self {
+        let completeness = if card.state == "observed_closed" {
+            AuditCompleteness::ObservedClosedUnverified
+        } else {
+            AuditCompleteness::Incomplete
+        };
+        Self {
+            card,
+            completeness,
+            can_refresh: true,
+        }
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod audit_model_tests {
+    use super::*;
+
+    fn card(state: &str, integrity: &str) -> AuditCard {
+        AuditCard {
+            session: "sxn-preview".into(),
+            source: "broker".into(),
+            integrity: integrity.into(),
+            state: state.into(),
+            event_count: 2,
+        }
+    }
+
+    #[test]
+    fn audit_model_keeps_unverified_partial_state_incomplete() {
+        let model = AuditModel::new(card("partial", "unverified"));
+        assert_eq!(model.completeness, AuditCompleteness::Incomplete);
+        assert!(model.can_refresh);
+    }
+
+    #[test]
+    fn observed_closed_is_distinct_from_authenticated_complete() {
+        let model = AuditModel::new(card("observed_closed", "unverified"));
+        assert_eq!(
+            model.completeness,
+            AuditCompleteness::ObservedClosedUnverified
+        );
+        let encoded = serde_json::to_string(&model).unwrap();
+        assert!(encoded.contains("ObservedClosedUnverified"));
+        assert!(!encoded.contains("authenticated"));
+    }
+}
