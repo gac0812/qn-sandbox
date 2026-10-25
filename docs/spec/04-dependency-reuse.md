@@ -82,3 +82,4 @@
 - 手写 base64/hex/uuid/路径拼接/重试循环/duration 解析。
 - 为一个函数引入全家桶；或"少一个依赖"为由手写 30 行通用件。
 - 抄来路不明的工具函数（无出处无测试）。
+- 回归入口：`scripts/verify_nono_upgrade.sh`（候选二进制/归档 + 原生契约/捕获/真实会话；macOS arm64）。版本升级 PR 必须先更新 pin 与 pinned SHA 断言，再跑该脚本并附输出；WSL2 走独立供给链路。

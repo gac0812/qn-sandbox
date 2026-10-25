@@ -278,3 +278,20 @@ The prepared offline profile can be exercised against the pinned engine:
 It verifies a project write, denial of an absolute synthetic host secret outside the
 grants, and removal of an inherited secret variable. It does not prove network,
 credential, Agent E2E or cleanup behavior.
+
+## Pinned upgrade regression (#59 P1)
+
+A version bump is an independent `deps:` PR. Update the pin and any pinned SHA
+assertion first, stage the candidate archive/binary, then run:
+
+    QN_TEST_NONO=/verified/nono \
+    QN_TEST_NONO_ARCHIVE=/verified/nono.tar.gz \
+    bash scripts/verify_nono_upgrade.sh
+
+Optional: `QN_TEST_PROFILE_PARENT=<private 0700 dir>`; real Agent regression with
+`QN_TEST_REAL_AGENT=1 QN_TEST_CLAUDE=/opt/homebrew/bin/claude`. The script runs
+the parser/fixture tests, version/profile/canary/managed/session/proxy-port native
+contracts, the real CLI install + run/status/stop tests, and the four-scenario
+capture suite. It does not change the pin or download anything. macOS arm64 only;
+WSL2 uses the separate supply path. A candidate whose version/archive hash does
+not match the pin fails closed.
