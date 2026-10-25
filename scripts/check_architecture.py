@@ -16,6 +16,13 @@ def allowed_dependencies(name):
     """Return allowed internal targets under the existing architecture rules."""
     if name in BASE:
         return BASE - {name}
+    if name == "qn-wsl":
+        # Decision #188: qn-wsl stages the pinned nono Linux artifact through
+        # qn-nono's installer (documented by upstream as the qn-wsl consumer).
+        # This is the single allowed adapter-to-adapter edge; all others stay
+        # forbidden. qn-nono modules other than installer remain off-limits
+        # via review (spec 01 section 3 note).
+        return (BASE | CORE | {"qn-nono"}) - {name}
     if name == "qn-core" or name in ADAPTERS:
         return (BASE | CORE) - {name}
     if name == "qn-bootstrap":
