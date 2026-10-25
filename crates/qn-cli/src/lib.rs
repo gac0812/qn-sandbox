@@ -78,6 +78,97 @@ pub fn render_error(error: &Error) -> String {
     escape_terminal_text(&error.to_string())
 }
 
+/// Renders one bounded audit timeline for human terminal output.
+///
+/// This function only formats the already validated core DTO. It does not read
+/// files, query adapters, or claim that the evidence is authenticated.
+///
+/// # Errors
+///
+/// Returns [`Error::Output`] when writing the rendered timeline fails.
+pub fn render_audit_text(
+    timeline: &qn_core::audit::AuditTimeline,
+    output: &mut dyn Write,
+) -> Result<(), Error> {
+    writeln!(output, "audit session: {}", timeline.session_id)?;
+    writeln!(output, "source: {}", audit_source_label(timeline.source))?;
+    writeln!(
+        output,
+        "integrity: {}",
+        audit_integrity_label(timeline.integrity)
+    )?;
+    writeln!(output, "state: {}", audit_state_label(timeline.state))?;
+    for event in &timeline.events {
+        writeln!(
+            output,
+            "event {}: {} wall_ms={} elapsed_us={}",
+            event.sequence,
+            audit_event_label(event.event),
+            event.wall_millis,
+            event.elapsed_micros
+        )?;
+    }
+    Ok(())
+}
+
+/// Serializes one bounded audit timeline as schema-versioned JSON.
+///
+/// The input is a core DTO with closed event enums; no source text or secret
+/// value is accepted by this presentation boundary.
+///
+/// # Errors
+///
+/// Returns [`Error::Json`] when serialization fails or [`Error::Output`] when
+/// writing the serialized document fails.
+pub fn render_audit_json(
+    timeline: &qn_core::audit::AuditTimeline,
+    output: &mut dyn Write,
+) -> Result<(), Error> {
+    #[derive(serde::Serialize)]
+    struct Report<'a> {
+        schema_version: u8,
+        timeline: &'a qn_core::audit::AuditTimeline,
+    }
+    let encoded = serde_json::to_string(&Report {
+        schema_version: 1,
+        timeline,
+    })?;
+    writeln!(output, "{encoded}")?;
+    Ok(())
+}
+
+fn audit_source_label(source: qn_core::audit::AuditSource) -> &'static str {
+    match source {
+        qn_core::audit::AuditSource::Broker => "broker",
+    }
+}
+
+fn audit_integrity_label(integrity: qn_core::audit::AuditIntegrity) -> &'static str {
+    match integrity {
+        qn_core::audit::AuditIntegrity::Unverified => "unverified",
+    }
+}
+
+fn audit_state_label(state: qn_core::audit::JournalState) -> &'static str {
+    match state {
+        qn_core::audit::JournalState::Empty => "empty",
+        qn_core::audit::JournalState::Open => "open",
+        qn_core::audit::JournalState::Partial => "partial",
+        qn_core::audit::JournalState::ObservedClosed => "observed_closed",
+    }
+}
+
+fn audit_event_label(event: qn_core::audit::AuditEventKind) -> &'static str {
+    match event {
+        qn_core::audit::AuditEventKind::ProviderRequested => "provider_requested",
+        qn_core::audit::AuditEventKind::DeliveryPrepared => "delivery_prepared",
+        qn_core::audit::AuditEventKind::ReplyWritten => "reply_written",
+        qn_core::audit::AuditEventKind::Denied => "denied",
+        qn_core::audit::AuditEventKind::Failed => "failed",
+        qn_core::audit::AuditEventKind::ServiceClosed => "service_closed",
+    }
+}
+
 /// Escapes untrusted parser context before clap formats and prints diagnostics.
 ///
 /// Static usage and help retain their original layout.
@@ -239,5 +330,79 @@ mod tests {
                 u32::from(control)
             );
         }
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod audit_render_tests {
+    use super::{render_audit_json, render_audit_text};
+    use qn_core::{
+        SessionId,
+        audit::{
+            AuditEvent, AuditEventKind, AuditIntegrity, AuditSource, AuditTimeline, JournalState,
+        },
+    };
+    use serde_json::Value;
+
+    fn timeline(state: JournalState) -> AuditTimeline {
+        AuditTimeline {
+            session_id: SessionId::new(),
+            source: AuditSource::Broker,
+            integrity: AuditIntegrity::Unverified,
+            state,
+            events: vec![
+                AuditEvent {
+                    sequence: 1,
+                    wall_millis: 10,
+                    elapsed_micros: 20,
+                    event: AuditEventKind::ProviderRequested,
+                },
+                AuditEvent {
+                    sequence: 2,
+                    wall_millis: 11,
+                    elapsed_micros: 21,
+                    event: AuditEventKind::ServiceClosed,
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn text_preserves_state_and_event_order() {
+        for state in [
+            JournalState::Empty,
+            JournalState::Open,
+            JournalState::Partial,
+            JournalState::ObservedClosed,
+        ] {
+            let mut output = Vec::new();
+            render_audit_text(&timeline(state), &mut output).unwrap();
+            let text = String::from_utf8(output).unwrap();
+            let expected_state = match state {
+                JournalState::Empty => "empty",
+                JournalState::Open => "open",
+                JournalState::Partial => "partial",
+                JournalState::ObservedClosed => "observed_closed",
+            };
+            assert!(text.contains(&format!("state: {expected_state}")));
+            assert!(text.find("event 1").unwrap() < text.find("event 2").unwrap());
+            assert!(text.contains("integrity: unverified"));
+        }
+    }
+
+    #[test]
+    fn json_is_versioned_and_contains_only_core_timeline_fields() {
+        let mut output = Vec::new();
+        render_audit_json(&timeline(JournalState::Partial), &mut output).unwrap();
+        let value: Value = serde_json::from_slice(&output).unwrap();
+        assert_eq!(value["schema_version"], 1);
+        assert_eq!(value["timeline"]["state"], "partial");
+        assert_eq!(value["timeline"]["source"], "broker");
+        assert_eq!(
+            value["timeline"]["events"][0]["event"],
+            "provider_requested"
+        );
+        assert_eq!(value["timeline"]["events"][1]["event"], "service_closed");
     }
 }
