@@ -1196,6 +1196,7 @@ mod mapping_tests {
             RunPhase::Running,
             None,
             None,
+            qn_core::runtime::CleanupOutcome::unconfirmed(),
             None,
         );
         let card = session_card(&status);
