@@ -197,3 +197,21 @@ QN_TEST_NONO=/verified/nono QN_TEST_PROFILE_PARENT=/private/probe-parent cargo t
 合成后代连接发送探针，确认应答后关闭；通过表示复现此限制，**不是清理通过**。
 因此生产 runner 不得把 ManagedOutput/原生 Exited 直接映射为 core Stopped；需先解决 #92 的
 后代所有权/终止证明。测试不给沙箱额外文件权限、不按数字 PID 补杀；无真实凭证或外部网络。
+## Official profile registry (#75 / #59)
+
+`profiles/manifest.json` names the two embedded official assets (`claude-code.json`,
+`codex.json`). `qn_nono::registry::OfficialCatalog::embedded` parses them at startup,
+requires `extends: "default"`, a non-empty proxy allowlist, no whole-domain `*` and no
+network block, and compares the asset meta version with the manifest version. The asset
+name is resolved through a closed match, so no runtime path can select another file.
+
+`HostProfileRegistry` stores installed versions under
+`QN_HOME/profiles/<namespace>/<name>/versions/<MAJOR.MINOR.PATCH>/` with the exact asset,
+a SHA-256 digest and one `current` selection. Reads reject symlinks, non-regular files,
+oversized input, non-canonical versions and digest mismatches. Installing identical bytes
+is idempotent; different bytes for the same version are refused; rollback selects the
+previous verified version only. These operations never launch nono, resolve a credential
+or widen a grant. Native validation of both assets uses the pinned binary:
+
+    QN_TEST_NONO=/verified/nono cargo test --locked -p qn-nono --lib \
+      registry::tests::it_validates_embedded_assets_with_the_pinned_engine -- --ignored

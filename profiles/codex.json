@@ -1,0 +1,54 @@
+{
+  "$schema": "https://nono.sh/schemas/nono-profile.schema.json",
+  "meta": {
+    "name": "qn-codex",
+    "version": "1.0.0",
+    "description": "qn official Codex profile: isolated state, proxy-only outbound allowlist and host-injected credentials. Keychains and credential files stay denied.",
+    "author": "qn-sandbox"
+  },
+  "extends": "default",
+  "groups": {
+    "include": [
+      "user_tools",
+      "homebrew_macos",
+      "system_read_macos",
+      "system_write_macos",
+      "node_runtime"
+    ]
+  },
+  "filesystem": {
+    "allow": [
+      "$WORKDIR",
+      "$HOME/.codex",
+      "$HOME/.config",
+      "$HOME/.cache",
+      "$HOME/.local/state",
+      "$HOME/tmp"
+    ]
+  },
+  "workdir": {
+    "access": "readwrite"
+  },
+  "environment": {
+    "allow_vars": [
+      "PATH",
+      "HOME",
+      "LANG",
+      "LC_ALL",
+      "TERM",
+      "TMPDIR",
+      "XDG_CONFIG_HOME",
+      "XDG_STATE_HOME",
+      "XDG_CACHE_HOME"
+    ]
+  },
+  "network": {
+    "allow_domain": [
+      "api.openai.com",
+      "auth.openai.com",
+      "chatgpt.com",
+      "platform.openai.com"
+    ],
+    "credentials": ["openai"]
+  }
+}

@@ -10,6 +10,9 @@ use clap::{Parser, Subcommand};
 use qn_config::Config;
 use qn_config::paths::QnPaths;
 
+mod profile;
+pub use profile::ProfileCommand;
+
 /// Parsed command-line invocation for the `qn` executable.
 #[derive(Debug, Parser)]
 #[command(name = "qn", version, about = "Secure sandbox for AI coding agents")]
@@ -31,12 +34,24 @@ pub enum Command {
         #[arg(long)]
         config_only: bool,
     },
+    /// Inspect and manage versioned official agent profiles.
+    Profile {
+        /// Profile catalog or registry operation.
+        #[command(subcommand)]
+        command: ProfileCommand,
+    },
 }
 
 /// Errors surfaced by CLI command execution.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
+    /// Invalid typed identifier; source never echoes user input.
+    #[error(transparent)]
+    Domain(#[from] qn_core::Error),
+    /// Profile catalog or host registry refused the operation.
+    #[error(transparent)]
+    Profile(#[from] qn_core::profile::ProfileError),
     /// Configuration paths or values could not be resolved or loaded.
     #[error(transparent)]
     Config(#[from] qn_config::Error),
@@ -62,8 +77,9 @@ pub enum Error {
 /// loaded, [`Error::Json`] when encoding fails, and [`Error::Output`] when
 /// writing diagnostics fails.
 pub fn run(cli: &Cli, output: &mut dyn Write) -> Result<(), Error> {
-    match cli.command {
-        Command::Doctor { json, config_only } => doctor(output, json, config_only),
+    match &cli.command {
+        Command::Doctor { json, config_only } => doctor(output, *json, *config_only),
+        Command::Profile { command } => profile::run(command, output),
     }
 }
 
@@ -309,7 +325,7 @@ fn doctor(output: &mut dyn Write, json: bool, _config_only: bool) -> Result<(), 
     Ok(())
 }
 
-fn escape_terminal_text(text: &str) -> String {
+pub(crate) fn escape_terminal_text(text: &str) -> String {
     let mut escaped = String::with_capacity(text.len());
     for character in text.chars() {
         if needs_terminal_escape(character) {

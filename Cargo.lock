@@ -819,7 +819,10 @@ version = "0.1.0"
 dependencies = [
  "process-wrap",
  "qn-broker",
+ "qn-config",
+ "qn-core",
  "qn-infra",
+ "qn-nono",
  "tokio",
  "tokio-util",
  "tracing",
@@ -849,6 +852,7 @@ name = "qn-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "qn-bootstrap",
  "qn-config",
  "qn-core",
  "serde",

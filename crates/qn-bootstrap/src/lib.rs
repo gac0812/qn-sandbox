@@ -34,3 +34,17 @@ impl ProcessPolicy for HostProcessPolicy {
 pub fn process_policy() -> impl ProcessPolicy {
     HostProcessPolicy
 }
+
+/// Compose the versioned official-profile catalog and host registry.
+///
+/// The returned registry performs bounded local storage work only; it never
+/// starts an engine or resolves a credential.
+///
+/// # Errors
+///
+/// Rejects a relative profile root and an invalid embedded catalog.
+pub fn profile_registry(
+    paths: &qn_config::paths::QnPaths,
+) -> Result<impl qn_core::profile::ProfileRegistry, qn_core::profile::ProfileError> {
+    qn_nono::registry::HostProfileRegistry::new(paths.profiles.clone())
+}

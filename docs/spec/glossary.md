@@ -11,6 +11,7 @@
 | **RunSpec** | core 的已校验启动输入：SessionId、ProfileRef、argv、workdir 与可选 GrantHandle | raw nono args |
 | **GrantHandle** | 不含凭证明文的授权记录标识；有效性、作用域与撤销由 broker 检查 | API key / authentication proof |
 | **Profile（Agent profile）** | 预装某 Agent CLI 与最小权限默认值（fs/网络/凭证绑定）的策略包（nono profile，JSON 可组合）；仓库维护官方 profile 于 `profiles/` | docker image / template |
+| **Profile Registry（profile 注册表）** | 宿主侧版本化存储：安装副本 + SHA-256 + `current`，支持幂等安装与回滚；不授予运行或凭证权限 | docker registry / package manager |
 | **Seatbelt / Landlock** | nono 所用的内核强制原语：macOS Seatbelt（10.5+）；Linux Landlock（fs ≥5.13，fs+网络 ≥6.7） | 沙箱（混用） |
 | **强隔离模式（Strong-isolation mode）** | P2 可选高档模式：独立 VM + guest 内 nono | 默认沙箱 |
 | **占位符 / broker 句柄（placeholder / handle / phantom token）** | 可进沙箱的**非凭证**引用形态：短生命周期、受限作用域、撤销即失效 | token（禁用）、密钥 |
