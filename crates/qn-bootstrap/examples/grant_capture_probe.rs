@@ -102,10 +102,10 @@ async fn serve(args: &[String]) -> Result<()> {
             let (mut peer, _) = tokio::select! { result = control.accept() => result?, () = cancel.cancelled() => return Ok(()) };
             let mut command = [0];
             peer.read_exact(&mut command).await?;
-            if command == [b'R'] {
+            if command == *b"R" {
                 grant.revoke().await?;
             }
-            if command == [b'Q'] {
+            if command == *b"Q" {
                 cancel.cancel();
             }
             peer.write_all(b"A").await?;
