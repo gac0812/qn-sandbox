@@ -70,6 +70,30 @@ impl ControlPlane {
         &self.paths
     }
 
+    /// Returns the shared official profile registry for read-only consumers.
+    #[must_use]
+    pub fn profiles(&self) -> &dyn ProfileRegistry {
+        self.profiles.as_ref()
+    }
+
+    /// Returns the shared engine setup service for read-only consumers.
+    #[must_use]
+    pub fn engine(&self) -> &dyn EngineSetup {
+        self.engine.as_ref()
+    }
+
+    /// Returns the shared broker audit query service for read-only consumers.
+    #[must_use]
+    pub fn audit(&self) -> &dyn AuditQuery {
+        self.audit.as_ref()
+    }
+
+    /// Returns the shared native audit query service for read-only consumers.
+    #[must_use]
+    pub fn native_audit(&self) -> &dyn NativeAuditQuery {
+        self.native_audit.as_ref()
+    }
+
     /// Lists compiled and installed profile summaries.
     ///
     /// # Errors
@@ -182,6 +206,7 @@ impl ControlPlane {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::ControlPlane;
 
@@ -221,5 +246,18 @@ mod tests {
             result,
             Err(qn_core::profile::ProfileError::UnknownProfile)
         ));
+    }
+
+    #[test]
+    fn it_lists_profiles_without_creating_runtime_or_audit_state() {
+        let root = tempfile::tempdir().unwrap();
+        let paths = qn_config::paths::QnPaths::from_root(
+            camino::Utf8PathBuf::from_path_buf(root.path().to_owned()).unwrap(),
+        );
+        let plane = ControlPlane::new(paths).unwrap();
+        let summaries = plane.list_profiles().unwrap();
+        assert_eq!(summaries.len(), 2);
+        assert!(!root.path().join("runtime").exists());
+        assert!(!root.path().join("audit").exists());
     }
 }
