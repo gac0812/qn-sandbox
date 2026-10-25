@@ -173,6 +173,15 @@ fn audit_event_label(event: qn_core::audit::AuditEventKind) -> &'static str {
     }
 }
 
+/// Selects the serialization format for an audit timeline.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AuditOutputFormat {
+    /// Human-readable terminal lines.
+    Text,
+    /// Versioned JSON for scripts and UI consumers.
+    Json,
+}
+
 /// Selects an audit presentation after the source has validated its timeline.
 ///
 /// This consumer boundary performs no source I/O. A later bootstrap composition
@@ -185,17 +194,16 @@ fn audit_event_label(event: qn_core::audit::AuditEventKind) -> &'static str {
 pub fn render_audit_for_session(
     session: &str,
     timeline: &qn_core::audit::AuditTimeline,
-    json: bool,
+    format: AuditOutputFormat,
     output: &mut dyn Write,
 ) -> Result<(), Error> {
     let expected = qn_core::SessionId::try_from(session).map_err(|_| Error::InvalidSession)?;
     if expected != timeline.session_id {
         return Err(Error::InvalidSession);
     }
-    if json {
-        render_audit_json(timeline, output)
-    } else {
-        render_audit_text(timeline, output)
+    match format {
+        AuditOutputFormat::Text => render_audit_text(timeline, output),
+        AuditOutputFormat::Json => render_audit_json(timeline, output),
     }
 }
 
@@ -366,7 +374,7 @@ mod tests {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod audit_render_tests {
-    use super::{render_audit_json, render_audit_text};
+    use super::{AuditOutputFormat, render_audit_json, render_audit_text};
     use qn_core::{
         SessionId,
         audit::{
@@ -426,13 +434,18 @@ mod audit_render_tests {
         let timeline = timeline(JournalState::Open);
         let mut output = Vec::new();
         assert!(matches!(
-            super::render_audit_for_session("bad", &timeline, false, &mut output),
+            super::render_audit_for_session("bad", &timeline, AuditOutputFormat::Text, &mut output),
             Err(super::Error::InvalidSession)
         ));
         assert!(output.is_empty());
         let other = qn_core::SessionId::new().to_string();
         assert!(matches!(
-            super::render_audit_for_session(&other, &timeline, false, &mut output),
+            super::render_audit_for_session(
+                &other,
+                &timeline,
+                AuditOutputFormat::Text,
+                &mut output
+            ),
             Err(super::Error::InvalidSession)
         ));
         assert!(output.is_empty());
@@ -443,10 +456,12 @@ mod audit_render_tests {
         let timeline = timeline(JournalState::Partial);
         let session = timeline.session_id.to_string();
         let mut text = Vec::new();
-        super::render_audit_for_session(&session, &timeline, false, &mut text).unwrap();
+        super::render_audit_for_session(&session, &timeline, AuditOutputFormat::Text, &mut text)
+            .unwrap();
         assert!(String::from_utf8(text).unwrap().contains("state: partial"));
         let mut json = Vec::new();
-        super::render_audit_for_session(&session, &timeline, true, &mut json).unwrap();
+        super::render_audit_for_session(&session, &timeline, AuditOutputFormat::Json, &mut json)
+            .unwrap();
         assert_eq!(
             serde_json::from_slice::<serde_json::Value>(&json).unwrap()["schema_version"],
             1
