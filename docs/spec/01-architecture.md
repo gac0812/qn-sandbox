@@ -172,7 +172,8 @@ Noise NNpsk0/25519/ChaChaPoly/SHA256，PSK 仅在宿主私有 binding；grant �
 Install 显式下载/修复；Inspect 不下载/修复，须先验证完整性再运行版本探测。
 成功只证明托管引擎字节/版本，不证明隔离、凭证、完整执行树清理或 WSL 就绪。
 调用方等待操作完成，丢弃 future 不保证阻塞 IO 取消；adapter 脱敏全部公开错误链，
-surface 转义路径控制字符。#117 仅发布契约，bootstrap/CLI/adapter 接线另见 #114。
+surface 转义路径控制字符。#114 经 QnPaths::engine_cache → bootstrap → NonoSetup 接线；
+默认 doctor 先完整性后版本探测，--config-only 保持原配置诊断契约。
 
 ### 4.4 MCP HTTP 路由规划（#122 / #123）
 
