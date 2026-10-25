@@ -70,28 +70,78 @@ impl ControlPlane {
         &self.paths
     }
 
-    /// Returns the shared official profile registry.
-    #[must_use]
-    pub fn profiles(&self) -> &dyn ProfileRegistry {
-        self.profiles.as_ref()
+    /// Lists compiled and installed profile summaries.
+    ///
+    /// # Errors
+    ///
+    /// Preserves profile registry validation and storage errors.
+    pub fn list_profiles(
+        &self,
+    ) -> Result<Vec<qn_core::profile::ProfileSummary>, qn_core::profile::ProfileError> {
+        self.profiles.list()
     }
 
-    /// Returns the shared managed engine setup service.
-    #[must_use]
-    pub fn engine(&self) -> &dyn EngineSetup {
-        self.engine.as_ref()
+    /// Resolves one profile identity through the shared registry.
+    ///
+    /// # Errors
+    ///
+    /// Preserves unknown, missing and integrity failures.
+    pub fn resolve_profile(
+        &self,
+        id: qn_core::ProfileRef,
+    ) -> Result<qn_core::profile::ResolvedProfile, qn_core::profile::ProfileError> {
+        self.profiles.resolve(id)
     }
 
-    /// Returns the shared broker audit query service.
-    #[must_use]
-    pub fn audit(&self) -> &dyn AuditQuery {
-        self.audit.as_ref()
+    /// Inspects the managed engine without downloading or repairing it.
+    ///
+    /// # Errors
+    ///
+    /// Preserves setup integrity, version and host support failures.
+    pub async fn inspect_engine(
+        &self,
+    ) -> Result<qn_core::setup::EngineInstallation, qn_core::setup::SetupError> {
+        self.engine
+            .run(qn_core::setup::SetupOperation::Inspect)
+            .await
     }
 
-    /// Returns the shared retained native audit query service.
-    #[must_use]
-    pub fn native_audit(&self) -> &dyn NativeAuditQuery {
-        self.native_audit.as_ref()
+    /// Installs or repairs the pinned managed engine.
+    ///
+    /// # Errors
+    ///
+    /// Preserves setup download, integrity, version and host support failures.
+    pub async fn install_engine(
+        &self,
+    ) -> Result<qn_core::setup::EngineInstallation, qn_core::setup::SetupError> {
+        self.engine
+            .run(qn_core::setup::SetupOperation::Install)
+            .await
+    }
+
+    /// Reads one bounded broker timeline.
+    ///
+    /// # Errors
+    ///
+    /// Preserves missing, invalid, incomplete and bounded-query errors.
+    pub async fn read_audit(
+        &self,
+        id: SessionId,
+    ) -> Result<qn_core::audit::AuditTimeline, qn_core::audit::AuditQueryError> {
+        self.audit.read(id).await
+    }
+
+    /// Reads one bounded retained native report.
+    ///
+    /// # Errors
+    ///
+    /// Preserves association, setup and native query failures.
+    pub async fn read_native_audit(
+        &self,
+        id: SessionId,
+    ) -> Result<qn_core::native_audit::NativeAuditReport, qn_core::native_audit::NativeAuditError>
+    {
+        self.native_audit.read(id).await
     }
 
     /// Runs one foreground session through the bootstrap composition.
@@ -147,6 +197,29 @@ mod tests {
         let plane =
             ControlPlane::new(paths).unwrap_or_else(|error| panic!("composition failed: {error}"));
         assert!(plane.paths().root.is_absolute());
-        assert!(!plane.profiles().list().unwrap_or_default().is_empty());
+        assert!(!plane.list_profiles().unwrap_or_default().is_empty());
+        assert!(
+            plane
+                .resolve_profile(
+                    qn_core::ProfileRef::try_from("qn/claude-code")
+                        .unwrap_or_else(|error| panic!("valid fixture: {error}"))
+                )
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn it_reports_unknown_profiles_without_touching_runtime_state() {
+        let paths = qn_config::paths::QnPaths::from_root("/tmp/qn-daemon-test-unknown");
+        let plane =
+            ControlPlane::new(paths).unwrap_or_else(|error| panic!("composition failed: {error}"));
+        let result = plane.resolve_profile(
+            qn_core::ProfileRef::try_from("qn/unknown")
+                .unwrap_or_else(|error| panic!("valid fixture: {error}")),
+        );
+        assert!(matches!(
+            result,
+            Err(qn_core::profile::ProfileError::UnknownProfile)
+        ));
     }
 }
