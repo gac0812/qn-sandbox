@@ -139,3 +139,14 @@ AuditedGrant::issue returns only after GrantIssued is durable; revoke invalidate
 journal IO and acknowledges GrantRevoked once. Failed/cancelled creation releases capacity;
 last-owner Drop invalidates without claiming durable evidence. Journal lock wait: 30 seconds.
 Pending: service #107, query projection #119, native attack acceptance and tree cleanup #93.
+
+## Owned capture serving (#107)
+
+CaptureRoute processes an authenticated request through fixed native identity, exact scope,
+durable provider intent, trusted provider, durable preparation and final live admission.
+CaptureService owns the listener and audited grant; cancel and await run to close the
+listener, invalidate authority, await provider cleanup and record closure. Invalid peers
+and recoverable provider failures are audited; audit or registry uncertainty stops serving.
+Already admitted replies may finish after revoke. Neither service success nor Drop proves
+sandbox process-tree cleanup (#93). Native proxy injection remains exclusively nono-owned.
+Run cargo test -p qn-bootstrap --test capture_service for ten real child/socket scenarios.
