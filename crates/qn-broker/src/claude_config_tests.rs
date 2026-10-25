@@ -1,6 +1,7 @@
 #![allow(clippy::unwrap_used)]
 use super::*;
 use serde_json::{Value, json};
+use std::fmt::Write as _;
 use std::{error::Error, fs};
 
 #[test]
@@ -56,7 +57,7 @@ fn it_rejects_non_template_configuration_before_touching_the_filesystem() {
         let (key, value) = object.iter().next().unwrap();
         let mut duplicate = serde_json::to_string(object).unwrap();
         duplicate.pop();
-        duplicate.push_str(&format!(",{key:?}:{value}}}"));
+        write!(duplicate, ",{key:?}:{value}}}").unwrap();
         let original = serde_json::to_string(object).unwrap();
         let complete = serde_json::to_string(&template).unwrap();
         attacks.push(complete.replacen(&original, &duplicate, 1).into_bytes());
