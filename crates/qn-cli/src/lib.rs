@@ -23,7 +23,11 @@ pub struct Cli {
 #[derive(Debug, Subcommand)]
 pub enum Command {
     /// Check local configuration and show unresolved prerequisites.
-    Doctor,
+    Doctor {
+        /// Emit a versioned JSON configuration report with safe display paths.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// Errors surfaced by CLI command execution.
@@ -33,6 +37,10 @@ pub enum Error {
     /// Configuration paths or values could not be resolved or loaded.
     #[error(transparent)]
     Config(#[from] qn_config::Error),
+
+    /// Structured diagnostics could not be encoded.
+    #[error("failed to encode diagnostics; retry without --json")]
+    Json(#[from] serde_json::Error),
 
     /// Diagnostic output could not be written.
     #[error("failed to write diagnostic output: {0}")]
@@ -44,10 +52,11 @@ pub enum Error {
 /// # Errors
 ///
 /// Returns [`Error::Config`] when qn configuration cannot be resolved or
-/// loaded, and [`Error::Output`] when writing diagnostics fails.
+/// loaded, [`Error::Json`] when encoding fails, and [`Error::Output`] when
+/// writing diagnostics fails.
 pub fn run(cli: &Cli, output: &mut dyn Write) -> Result<(), Error> {
     match cli.command {
-        Command::Doctor => doctor(output),
+        Command::Doctor { json } => doctor(output, json),
     }
 }
 
@@ -105,11 +114,42 @@ pub fn sanitize_parse_error(error: &mut clap::Error) {
     }
 }
 
-fn doctor(output: &mut dyn Write) -> Result<(), Error> {
+#[derive(serde::Serialize)]
+struct DoctorReport {
+    schema_version: u8,
+    home: String,
+    config_file: String,
+    config_source: &'static str,
+    command_timeout_ms: u64,
+    sandbox_engine: &'static str,
+    configuration: &'static str,
+}
+
+fn doctor(output: &mut dyn Write, json: bool) -> Result<(), Error> {
     let paths = QnPaths::resolve()?;
     let config_file_exists = paths.config_file.exists();
     let config = Config::load(&paths)?.apply_env_overrides()?;
     let timeout_ms = u64::try_from(config.command_timeout().as_millis()).unwrap_or(u64::MAX);
+
+    if json {
+        let report = DoctorReport {
+            schema_version: 1,
+            home: escape_terminal_text(paths.root.as_str()),
+            config_file: escape_terminal_text(paths.config_file.as_str()),
+            config_source: if config_file_exists {
+                "file"
+            } else {
+                "defaults"
+            },
+            command_timeout_ms: timeout_ms,
+            sandbox_engine: "not_checked",
+            configuration: "ok",
+        };
+        // Encode first so configuration/serialization failures cannot publish a partial report.
+        let encoded = serde_json::to_string(&report)?;
+        writeln!(output, "{encoded}")?;
+        return Ok(());
+    }
 
     writeln!(output, "qn doctor")?;
     writeln!(
