@@ -192,3 +192,30 @@ fn it_rejects_non_unicode_environment_without_partial_json() {
         assert!(!stderr.contains('\u{fffd}'));
     }
 }
+
+#[test]
+fn it_advertises_config_only_as_the_only_mode_without_engine_report() {
+    let output = Command::new(env!("CARGO_BIN_EXE_qn"))
+        .args(["doctor", "--help"])
+        .output()
+        .expect("qn should execute");
+    assert!(output.status.success(), "{output:?}");
+    let text = String::from_utf8(output.stdout).expect("UTF-8 help");
+    assert!(text.contains("--config-only"));
+    assert!(text.contains("--json"));
+}
+
+#[test]
+fn it_keeps_config_only_json_without_engine_field() {
+    let home = tempfile::tempdir().expect("temporary home");
+    let output = Command::new(env!("CARGO_BIN_EXE_qn"))
+        .args(["doctor", "--json", "--config-only"])
+        .env("QN_HOME", home.path())
+        .env_remove("QN_DEFAULT_TIMEOUT_MS")
+        .output()
+        .expect("qn should execute");
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let report: Value = serde_json::from_slice(&output.stdout).expect("JSON report");
+    assert_eq!(report["sandbox_engine"], "not_checked");
+    assert!(report.get("engine").is_none());
+}
