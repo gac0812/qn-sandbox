@@ -42,7 +42,8 @@ are not version tags, branch suffixes, file names, or class names.
 GitHub Actions CI is temporarily paused for the private repository under #145 due to
 runner/quota availability. Until a restoration PR re-enables it, every PR must include
 fresh local fmt, clippy, test, strict rustdoc, architecture and dependency evidence;
-restoring CI requires a separate reviewed PR.
+restoring CI requires a separate reviewed PR. Run `scripts/verify_local.sh` from any directory
+for the local quality gates while CI is paused.
 6. Delete the branch after merge.
 
 ## Priority Labels
