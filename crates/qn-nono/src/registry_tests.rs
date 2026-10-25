@@ -141,6 +141,49 @@ fn it_rolls_back_to_the_previous_verified_version() {
 }
 
 #[test]
+fn it_publishes_a_matching_official_asset_and_refuses_mismatches() {
+    let (_directory, path) = root();
+    let registry = HostProfileRegistry::new(path).unwrap();
+    let id = identity("qn/claude-code");
+    registry.install(id.clone()).unwrap();
+    let base = OfficialCatalog::embedded().unwrap().resolve(&id).unwrap();
+    let version = ProfileVersion::try_from("1.1.0").unwrap();
+    let asset = base
+        .nono_profile()
+        .replace("\"version\": \"1.0.0\"", "\"version\": \"1.1.0\"");
+    let summary = registry
+        .publish_asset(id.clone(), version.clone(), &asset, base.state_dir())
+        .unwrap();
+    assert_eq!(summary.version().as_str(), "1.1.0");
+
+    assert!(matches!(
+        registry.publish_asset(
+            id.clone(),
+            ProfileVersion::try_from("1.2.0").unwrap(),
+            &asset.replace("1.1.0", "1.2.0"),
+            ".other"
+        ),
+        Err(ProfileError::InvalidCatalog)
+    ));
+    assert!(matches!(
+        registry.publish_asset(
+            id.clone(),
+            ProfileVersion::try_from("1.2.0").unwrap(),
+            &asset,
+            base.state_dir()
+        ),
+        Err(ProfileError::InvalidVersion)
+    ));
+    let conflicting = asset.replace("api.anthropic.com", "api.example.com");
+    assert!(matches!(
+        registry.publish_asset(id.clone(), version, &conflicting, base.state_dir()),
+        Err(ProfileError::Conflict)
+    ));
+    let rolled = registry.rollback(id).unwrap();
+    assert_eq!(rolled.version().as_str(), "1.0.0");
+}
+
+#[test]
 fn it_requires_an_install_before_a_rollback() {
     let (_directory, path) = root();
     let registry = HostProfileRegistry::new(path).unwrap();

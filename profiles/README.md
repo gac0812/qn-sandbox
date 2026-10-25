@@ -30,6 +30,9 @@ nono profile validate --json --strict -- profiles/claude-code.json
 nono profile validate --json --strict -- profiles/codex.json
 ```
 
+Run the same validation through the product with `qn profile validate <id>`; it verifies
+the managed engine bytes before executing and never downloads.
+
 `manifest.json` is the qn publication metadata. It is parsed with unknown-field
 rejection by `qn-nono`; the embedded assets are the compile-time source of
 truth for the built-in catalog. Installing a profile copies the asset and its

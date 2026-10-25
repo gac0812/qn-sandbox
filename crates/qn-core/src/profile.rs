@@ -258,6 +258,9 @@ pub enum ProfileError {
     /// The registry root is not an absolute path.
     #[error("profile registry root must be absolute; set QN_HOME to a private directory")]
     InvalidRoot,
+    /// A supplied asset path is not absolute.
+    #[error("profile asset path must be absolute; use a path from the trusted host location")]
+    InvalidAssetPath,
     /// An existing version has different bytes.
     #[error("profile version already exists with different content; publish a new version")]
     Conflict,
@@ -273,4 +276,13 @@ pub enum ProfileError {
     /// Bounded local storage could not complete the operation.
     #[error("profile registry storage failed; check qn home permissions and retry")]
     Io(#[source] std::io::Error),
+    /// The managed engine is missing or failed its integrity/version inspection.
+    #[error("managed engine is unavailable; run 'qn install' first")]
+    Engine(#[source] crate::setup::SetupError),
+    /// The pinned engine rejected the profile or could not be executed.
+    #[error("native profile validation failed; inspect the pinned engine and profile")]
+    Validation(#[source] Box<dyn std::error::Error + Send + Sync>),
+    /// The native validation command could not be constructed from the asset.
+    #[error("native profile validation is unavailable; check the managed profile")]
+    ValidationUnavailable,
 }
