@@ -6,6 +6,8 @@ pub mod audit;
 pub mod domain;
 /// Core error types and result alias.
 pub mod error;
+/// Host-only MCP route planning contract.
+pub mod mcp;
 /// Managed engine installation and inspection contracts.
 pub mod setup;
 

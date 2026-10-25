@@ -14,3 +14,7 @@ EngineSetup（#114/#117）由实际 CLI install/doctor 消费者推动；本 PR 
 完整性通过后才执行版本探测；结果不声明沙箱策略、凭证或完整执行树清理就绪。
 调用方必须等待 future 完成；丢弃 future 不保证阻塞 IO 取消/回滚。adapter 必须对
 错误 Display/Debug/来源链脱敏，终端呈现方必须转义路径。无新增依赖或平台类型。
+
+`McpRouting`（#122 / #123）规划精确 HTTP 路由，供可信宿主组合使用。
+`McpHttpRoute` 不含凭证或 grant，不代表注册/授权；adapter 负责端点语法验证。
+契约源自 #122 已验证的本地 CLI/native 消费者；本切片不包含这些消费者。
