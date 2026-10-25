@@ -16,6 +16,10 @@ use tokio::{
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum BrokerEvent {
+    /// Grant creation was persisted before exposing its owner.
+    GrantIssued,
+    /// Authorization was invalidated before this durable acknowledgment.
+    GrantRevoked,
     /// Persisted before the trusted credential command starts.
     ProviderRequested,
     /// A response is ready; final live-grant admission is still required.
@@ -126,6 +130,10 @@ impl BrokerJournal {
             deadline,
             failed: false,
         })
+    }
+
+    pub(crate) fn is_fresh(&self) -> bool {
+        self.sequence == 0 && !self.failed
     }
 
     /// Session owning every record; serving composition must match this identity.
