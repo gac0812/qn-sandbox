@@ -10,7 +10,7 @@
 | --- | --- | --- | --- |
 | H1 | WSL2 默认内核 ≥6.7 | **✗ 证伪（本机当前）** | `uname -r` = `6.6.87.2-microsoft-standard-WSL2`。注意：这不是 stable 通道天花板——**stable WSL 3.0.3 已附带内核 6.18.54.1**（观察日期 2026-10-24，来源 microsoft/WSL release 3.0.3 notes，PR #41822）；本机停留 2.6.3.0 且 `wsl --update` 因网络返回 HTTP 403 无法触达（§4-E4） |
 | H2 | Landlock 网络限制在默认内核可用 | **✗ 证伪（6.6 内核）** | C 探针（附录 A）：`ABI version: 3`；net ruleset 创建失败；fs ruleset 创建成功；`CONFIG_SECURITY_LANDLOCK=y` 且 landlock 位于 LSM 链首位（多源互证） |
-| H3 | 存在可行内核升级路径 | **✓ 成立（路径确认，端到端验证待装机批准）** | **主路径 = 官方 stable 升级到 WSL ≥3.0.3**（自带 6.18.54.1，Landlock ≥ ABI v4——v4=6.7 即含网络 access rights，具体 ABI 版本以 [内核文档](https://docs.kernel.org/userspace-api/landlock.html) 为准）；**兜底 = 自编译** `linux-msft-wsl-6.18.y` 分支（tag 至 6.18.54.1，观察 2026-10-24）+ `.wslconfig kernel=` 注入。装机渠道障碍实测见 §4-E4 |
+| H3 | 存在可行内核升级路径 | **✓ 成立（端到端已验证，2026-10-24）** | MSI 提权安装 WSL 3.0.3.0 成功：内核 `6.18.54.1-microsoft-standard-WSL2`，探针 ABI **3→7**、net ruleset 创建成功；nono 面板报 Landlock V6（内核宣告 7，nono 用至其支持级 V6）。**兜底** = 自编译 `linux-msft-wsl-6.18.y` + `.wslconfig kernel=`（离线/锁版场景）。渠道障碍实测见 §4-E4 |
 | H4 | nono 在 WSL2 内正常工作 | **◐ 部分成立** | fs 强制 ✓（T1）；网络 per-domain 过滤在 6.6 上 ✗——nono 自报 `Landlock V3, degraded: per-port filtering… unavailable on WSL2`（其引用 `nono.sh/docs/cli/internals/wsl2`）；代理相关旗标族存在（E1），phantom 代理启用方式待确认（已列 M2 遗留） |
 
 ## 2. 行为测试记录（nono v0.80.0，Ubuntu-24.04，root；完整命令见附录 B）
@@ -45,6 +45,35 @@
 
 **待办**：所有者批准后在本机完成 WSL 3.0.3 升级 → `wsl --shutdown` → 重跑附录 A 探针复验 ABI ≥4 → nono 网络过滤行为复测。这是 spike 的最后一环（H3 端到端）。
 
+## 4b. 升级后验证与新增发现（2026-10-24，H3 收口）
+
+| 验证项 | 结果 |
+| --- | --- |
+| `wsl --version` | 3.0.3.0（MSI 提权安装，exit 0） |
+| `uname -r` | `6.18.54.1-microsoft-standard-WSL2` |
+| Landlock 探针（附录 A） | `ABI version: 7`（原 3）；`NET ruleset: fd=3` 创建成功（原 E2BIG） |
+| nono 能力面板 | `Landlock V6`（内核宣告 ABI 7，nono 使用至其支持级），不再报 degraded |
+| docker-desktop 发行版 | 完好（`wsl -l -v` 确认） |
+| 攻击套件重跑（tests/e2e/attack） | PASS=3 FAIL=2 SKIP=3 **GAP=0**：U4 从 GAP 转为普通违规（语义正确：内核已能强制，是调用姿态问题） |
+
+**新增发现（改变 #17 决策输入）**：
+
+1. **nono 默认网络姿态 = outbound allowed，与内核能力无关**（ABI V3 与 V6 实测一致，
+   面板明示 `net outbound allowed`）。升级前"WSL2 degraded"的解释不完整：
+   默认拒绝不能指望内核升级自动带来，必须由 qn 调用层构造。
+2. **默认拒绝 + 白名单今天即可构造**：仅传 `--allow-domain example.com` 即激活代理
+   过滤且隐含默认拒绝——白名单域名 HTTP 200 放行（P7）、白名单外域名 curl rc=56
+   被拒（P6）。空白名单 = 完全离线（offline-only 降级档的实现形态）。
+3. **`--block-net` 与 `--allow-domain` 互斥**（官方报错：domain filtering requires
+   proxy mode）——全断模式与代理过滤模式二选一，profile 层不可混用。
+4. 附带发现的新旗标：`--deny-domain`、`--upstream-bypass`、`--extends`（profile 继承）、
+   `--proxy-ca-validity`——qn profiles 的策略 DSL 比预想丰富（nono v0.80 `run --help`，
+   2026-10-24）。
+
+结论：kernel 升级必要但不充分；guardrails 网络不变式的落地公式 =
+**内核 ≥6.7（ABI v4+）× qn 调用层强制传 profile 白名单（`--allow-domain`）**。
+M4 之前唯一做不到的只剩 U5 的凭证附加（代理认证注入）。
+
 ## 5. 升级方案初版风险清单（TODO-004a DoD 要求）
 
 1. 用户已有 WSL 发行版/Docker Desktop 与 WSL 3.x 的兼容性未在本机验证（升级被暂缓的原因之一）。
@@ -56,7 +85,7 @@
 
 ## 6. 遗留与去向（全部转 M2 / qn-wsl kernel 模块，关联决策 issue 见 PR）
 
-- [ ] 本机 WSL 3.0.3 升级 + ABI ≥4 复验 + nono 网络过滤行为复测（待所有者批准；H3 端到端收口）
+- [x] 本机 WSL 3.0.3 升级 + ABI ≥4 复验 + nono 网络过滤行为复测（已完成，见 §4b）
 - [ ] 决策 issue：kernel 硬前置 + 降级档（offline-only）+ doctor 呈现 + P2 VM 备选分支（三人裁决）
 - [ ] AF_UNIX 形态的代理连通验证（若 nono 代理可绑 unix socket，降级路线复活）
 - [ ] mirrored 网络模式下宿主代理连通性验证（M2 / qn-wsl bootstrap 模块）

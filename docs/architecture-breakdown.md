@@ -61,7 +61,8 @@ flowchart LR
     MCP[qn-mcp] --> D
     D --> BS[qn-bootstrap]
     BS --> N[qn-nono] --> NONO((nono 引擎))
-    BS --> B[qn-broker] --> NONO
+    BS --> B[qn-broker]
+    NONO -->|宿主 capture| B
     BS --> G[qn-gateway] --> NET2[MCP 服务器]
     BS --> W[qn-wsl] --> DISTRO[(WSL2 发行版 + nono)]
     N --> AG[受限 Agent 进程]
@@ -80,7 +81,7 @@ flowchart LR
 ### 3.2 `qn-nono` — 引擎适配器（A 负责人）
 - **职责**：nono 安装与版本锁、`run --profile` 拉起、status/`why` 透传、审计日志采集；实现 `SandboxEngine`。
 - **边界**：全仓唯一触碰 nono 的 crate；不自研任何隔离机制。
-- **内部模块**：`installer`（下载/校验/锁版）、`runner`（经 `qn-infra::process` 子进程调用 nono CLI，解析 `--json` 输出；依据 [spike ③](./dev-notes/spike-03-nono-integration.md)）、`profile_gen`（core Profile → nono profile JSON）、`audit_tail`（审计流采集与 Denial 结构化）、`why`（拒绝原因透传）。
+- **内部模块**：`installer`（下载/校验/锁版）、`runner`（经 `qn-infra::process` 子进程调用 nono CLI，解析 `--json` 输出；依据 [spike ③](./dev-notes/spike-03-nono-integration.md)）、`profile_gen`（core Profile → nono profile JSON）、`audit_tail`（历史证据采集、来源与完整性）、`why`（策略预检，不作历史拒绝查询）。
 - **测试**：对 nono 的契约测试（真二进制，CI 缓存）；profile 生成快照测试。
 
 ### 3.3 `qn-broker` — 凭证代答（A 负责人）
@@ -123,28 +124,29 @@ flowchart LR
 | core | — | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | config / infra | ✗ | — | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | qn-nono | ✓ | ✓ | ✓ | ✗ | —（自身） | ✗ | ✗ | ✗ | ✗ |
-| qn-broker | ✓ | ✓ | ✓ | ✗ | ✓（经其代理 API） | — | ✗ | ✗ | ✗ |
-| qn-gateway | ✓ | ✓ | ✓ | ✗ | ✗ | ✓（grant 校验） | — | ✗ | ✗ |
+| qn-broker | ✓ | ✓ | ✓ | ✗ | ✗ | — | ✗ | ✗ | ✗ |
+| qn-gateway | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | — | ✗ | ✗ |
 | qn-wsl | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | — | ✗ |
 | bootstrap | ✓ | ✓ | ✓ | — | ✓ | ✓ | ✓ | ✓ | ✗ |
 | daemon / cli / ui / mcp | ✓ | ✓ | ✓ | ✓ | ✗（经 bootstrap） | ✗ | ✗ | ✗ | — |
 
-要点：core 零依赖被所有人依赖；**qn-nono 是唯一触碰 nono 的 crate**；bootstrap 是唯一组合根。
+要点：core 不依赖适配器或 surface；**qn-nono 是唯一驱动 nono CLI 的 crate**；bootstrap 是唯一组合根。
+适配器协作经 bootstrap 注入的 core port；上表按 01 §3 / #14 修正原先允许互引的矛盾。
 
 ## 5. 接口契约（port 语义表，签名见 01 §4）
 
 ### 5.1 `SandboxEngine`
 | 方法 | 语义与不变式 | 幂等性 | 错误变体 |
 | --- | --- | --- | --- |
-| `run(spec)` | profile 先解析成功；限制施加不可逆；**默认拒绝、按 profile 放行**；失败不留半开进程 | 同 spec 重复 → 新 Session | `InvalidProfile`、`EngineUnavailable`、`ResourceExhausted` |
+| `run(spec)` | 验证 profile、环境及 grant；**默认拒绝、按 profile 放行**；失败清理资源 | 同一 SessionId 不重复启动 | `InvalidProfile`、`EngineUnavailable`、`ResourceExhausted` |
 | `status(id)` | 只读；状态值出自 core 枚举 | 是 | `NotFound` |
-| `explain(id)` | 返回 Denial 列表（透传 nono why） | 是 | `NotFound` |
-| `stop(id, mode)` | Graceful：TERM→超时→KILL；Kill：立即 | 已停 → Ok | `StateConflict`、`Timeout` |
+| `explain(id)` | 返回 ExplainReport（历史观察、来源与完整性）；why 仅策略预检 | 是 | `NotFound` |
+| `stop(id, mode)` | 请求停止并确认所拥有的进程/后代清理；未确认不得标为 Stopped | 已确认清理 → Ok | `StateConflict`、`Timeout`、清理未确认 |
 
 ### 5.2 `CredentialBroker`
 | 方法 | 语义 | 安全不变式（08 §4） |
 | --- | --- | --- |
-| `grant(id, refs, scope)` | 授予引用使用权；phantom token 就绪；审计记引用名+时间+会话 | 明文路径仅：宿主存储 → nono 代理 → 出站认证字段 |
+| `grant(id, refs, scope)` | 准备宿主授权与 capture 入口；审计记引用名+时间+会话；nono 启动时建立代理/占位符 | 明文路径仅：宿主存储 → nono 代理 → 出站认证字段 |
 | `write_managed_config` | 校验并写 agent/MCP 配置 | 出现明文即拒绝；只允许 Handle/引用/代理地址 |
 | `revoke(grant)` | 立即断供 | 该会话后续出站即刻失去认证 |
 

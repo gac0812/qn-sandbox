@@ -25,6 +25,7 @@
 //! ```
 
 pub mod args;
+pub mod audit;
 pub mod error;
 pub mod installer;
 pub mod manifest;
@@ -37,3 +38,7 @@ pub use installer::{InstallOptions, InstalledBinary, install};
 pub use manifest::LOCKED_NONO_VERSION;
 pub use target::NonoTarget;
 pub use version::verify_version;
+
+// TODO(#14): remove this allowance when the remaining engine wire consumers land.
+#[allow(dead_code)]
+mod wire;

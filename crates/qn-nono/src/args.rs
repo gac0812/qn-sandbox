@@ -6,9 +6,12 @@
 use std::fmt;
 
 use camino::{Utf8Path, Utf8PathBuf};
-use qn_core::SessionId;
+use qn_core::{RunSpec, SessionId};
 
 use crate::NonoError;
+
+mod session;
+pub use session::{NonoSessionId, NonoStopMode};
 
 /// Whether nono attaches the terminal or leaves its supervisor running.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -45,6 +48,21 @@ impl fmt::Debug for RunArgs {
             .field("mode", &self.mode)
             .field("argument_count", &self.command.len())
             .finish_non_exhaustive()
+    }
+}
+
+impl RunArgs {
+    /// Translate validated core launch data after resolving/authorizing a managed profile.
+    /// Grant handles are deliberately not encoded in argv; the runtime binds them separately.
+    #[must_use]
+    pub fn from_spec(spec: &RunSpec, profile: Utf8PathBuf, mode: RunMode) -> Self {
+        Self {
+            profile,
+            name: spec.id(),
+            workdir: spec.workdir().to_owned(),
+            mode,
+            command: spec.command().to_vec(),
+        }
     }
 }
 
@@ -144,7 +162,7 @@ impl fmt::Debug for NonoArgs {
     }
 }
 
-fn validate_path(path: &Utf8Path, field: &'static str) -> Result<(), NonoError> {
+pub(crate) fn validate_path(path: &Utf8Path, field: &'static str) -> Result<(), NonoError> {
     if !path.is_absolute() || path.as_str().contains('\0') {
         return Err(NonoError::InvalidArgument { field });
     }
@@ -307,5 +325,27 @@ mod tests {
         ] {
             assert!(!debug.contains(hidden));
         }
+    }
+
+    #[test]
+    fn it_consumes_core_launch_data_without_putting_grants_in_argv() {
+        let input = input();
+        let grant = qn_core::GrantHandle::new();
+        let spec = qn_core::RunSpec::new(
+            input.name,
+            qn_core::ProfileRef::try_from("qn/codex").unwrap(),
+            input.command.clone(),
+            input.workdir.clone(),
+        )
+        .unwrap()
+        .with_grant(grant);
+        let args = NonoArgs::run(RunArgs::from_spec(&spec, input.profile, input.mode)).unwrap();
+        assert_eq!(&args.as_slice()[9..], spec.command());
+        assert!(
+            !args
+                .as_slice()
+                .iter()
+                .any(|value| value.contains(&grant.to_string()))
+        );
     }
 }

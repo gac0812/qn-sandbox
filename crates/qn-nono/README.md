@@ -10,6 +10,8 @@
 | --- | --- | --- |
 | `installer` | 锁版 manifest（v0.80.0 + 各平台 SHA-256）、下载、校验、解包安装到 `<install_root>/<version>/nono` | M0 骨架（本期） |
 | `args` | version / profile validate / run 的受限参数构造；固定诊断开关和命令分隔符 | A-0.5（#43） |
+| `args::session` | 本地 ps/inspect/stop/audit list/show 参数；完整 native ID 与固定选项边界 | A-0.5（#52） |
+| `audit::AuditReader` | 隔离 HOME/XDG、锁版探测、受管执行的 typed audit list/show | #68（原生记录，不等于完整 AuditEvent） |
 | `version` | 显式绝对路径调用 `nono --version`，锁版比对、5 秒超时、单流 1 KiB 输出上限 | A-0.5 首片（#41） |
 | `runner` | 经 `qn-infra::process`（#19）调用 nono CLI + 契约测试 | M1（未开始） |
 | `profile_gen` | core Profile → nono profile JSON | M1（未开始） |
@@ -34,15 +36,22 @@
   等不能成为 nono 选项。分隔符后的同名参数属于 Agent，按原样保留，不代表凭证可放进 argv。
 - 参数构造不校验 profile 内容或来源；runner 在执行前仍须验证 profile 的默认拒绝、环境白名单、
   凭证约束与来源，并完成 #27 环境清理。此片未实现 runner 或冻结 #14 ports。
+- `RunArgs::from_spec`（#72）消费 core `RunSpec`，profile 路径由 adapter 解析后提供；grant 句柄不进入 argv，
+  实际授权及 provider 绑定必须由运行路径另行完成，不能把结构校验当作授权。
 - `verify_version(&Utf8Path)` 是异步只读探测，全部经 `qn-infra::process`；
-  不搜索 PATH，不拉起沙箱。相对路径、非零退出、截断/异常输出、版本不符均拒绝。
+  不搜索 PATH，不拉起沙箱；通过 `env_clear()` 启动空环境子进程，避免继承宿主凭证（#56）。
+  相对路径、非零退出、截断/异常输出、版本不符均拒绝。
   缺失二进制和超时保留原始进程错误；版本响应不会进入本 crate 的错误信息。
 - 安装调用方可在 `install` 返回后显式调用 `verify_version`；尚未接入 CLI/doctor，
   `install` 本身保持同步下载安装语义。版本字符串检查不能证明文件完整性。
 
-- 安装幂等：目标路径已存在 `nono` 时直接复用，不重新校验（完整性复核由
-  `qn doctor` 在 runner 落地后承担；当前版本探测不替代缓存完整性检查）。
+- 安装完整性（#58）：每次复制缓存归档到独立临时目录，核对锁版 SHA-256 后重新提取并发布
+  `nono`，恢复字节及归档权限。归档缓存位于 `<install_root>/<version>/<archive_name>`；
+  缺失时下载并验证，损坏时拒绝返回成功。旧安装首次需要联网取得归档；有效缓存可离线修复。
+  不同平台目标必须使用不同 install root；校验不抵御返回后宿主特权进程再次修改文件。
 - 上游 `SHA256SUMS.txt` 是哈希清单而非签名；签名校验方案在 08 落地时评估。
+- 宿主下载通过 ureq 读取代理环境配置（#60），仅接受 HTTPS 请求/重定向；归档仍须匹配
+  锁版 SHA-256。代理配置只用于宿主下载，不写入 profile 或传给 nono 子进程。
 
 ## 版本契约测试
 
@@ -53,8 +62,54 @@ QN_TEST_NONO=/absolute/path/to/nono cargo test --locked -p qn-nono --test versio
 ```
 
 此测试只验证版本调用契约，不等同于沙箱隔离、凭证或 Agent E2E 验收。
+`cargo test --locked -p qn-nono --test version_environment` 使用合成 canary 和自重执行的
+Rust 测试程序验证实际探测路径不继承环境；不修改宿主环境，也不代表 #27 的 sandbox run 已接入。
+
+macOS / Linux 离线验证已下载的锁版归档，安装器会自行校验 SHA-256 并修复合成损坏文件：
+
+```sh
+QN_TEST_NONO_ARCHIVE=/absolute/path/to/nono-release.tar.gz cargo test --locked -p qn-nono --lib installer::tests::it_repairs_and_probes_the_real_pinned_binary_offline -- --ignored --exact
+```
 
 ## macOS 协议实测
 
 Issue #46 的隔离探测命令、结果和限制见 [spike ②](../../docs/dev-notes/spike-02-nono-macos.md)。
 仅用于合成数据研究；examples/probe 不可作为生产 runner，生产前置仍包括 #14 / #27。
+
+## 会话命令契约（#52）
+
+`NonoArgs` 的 `sessions/inspect/stop/audit_list/audit_show` 只构造 argv；查询固定 JSON，
+`sessions` 包含 exited 记录且不支持 remote。`args::NonoSessionId` 仅接收当前锁版生成的
+16 位小写 hex ID；它不是 core `SessionId`，runner 须从受管记录关联并验证归属，不接受名称、
+前缀或旧式日期审计 ID。停止宽限期只接受 1–300 整秒，不静默舍入；退出码不证明后代已清理。
+
+`session_contract` 是默认忽略的 macOS 真机测试，先编译并从 JSON 取得测试可执行文件：
+
+```sh
+cargo test --locked -p qn-nono --test session_contract --no-run --message-format=json
+```
+
+在 `/Users/Shared` 下新建 0700 空目录作为 `QN_TEST_ROOT`，创建 `home/config/state/cache/tmp`，
+以清空后重建的环境启动测试二进制 `--ignored`：`HOME/XDG_CONFIG_HOME/XDG_STATE_HOME/
+XDG_CACHE_HOME/TMPDIR` 分别指向这些子目录，`PATH=/usr/bin:/bin`、`LANG=en_US.UTF-8`，
+`QN_TEST_NONO` 指向已核对归档及二进制 SHA-256 的锁版 nono。测试会创建两次 sleep 会话；
+结束或失败后检查 `cleanup.json` 中的 PID 并清理仍存活的测试进程，不能只看 ps 的 exited。
+本轮复现 #47 的 force 残留，并观察到强杀后审计元数据缺失；审计详情契约仅在正常停止后断言。
+此测试只验证 CLI 契约，不代表 #14/#27/#47 或生产 Agent、安全撤销 E2E 已完成。
+
+## 内部协议解析（#48）
+
+wire 模块按 #46 的 nono 0.80.0 实测 fixture 解析 profile、ps/inspect、audit list/show 和混合 stderr 诊断。
+字段未知可兼容；必需字段缺失/错型、截断、超限、歧义拒绝。错误和 Debug 不回显载荷。
+解析不判断退出成功、不推断 Denial、不将 wire 状态映射到 core；未来 runner 仍须处理进程结果。
+诊断只保证结构，不保证来源：child stderr 可伪造 JSON，#47 确认审计可信来源前不能把它当授权依据。
+审计 DTO 经 `audit` 模块公开，其他 wire 类型仍 crate-private；未接入的 engine 路径保留 #14 dead_code 豁免。
+
+`AuditReader::new(binary, managed_root, policy)` 只接受绝对路径，调用方须先核对 binary 的安装完整性。
+root 布局与 #46 探测一致（home/config/state/cache/tmp），须为受管目录；策略由 bootstrap 注入。
+`list/show` 使用固定参数、空父环境、5 秒查询限时和单流 1 MiB 上限；show 核对完整 native ID。
+默认 Debug/错误不回显载荷。DTO 仅呈现原生记录，不证明来源完整/可信，不推断 filesystem Denial，
+也不表示 #66 的统一事件查询或攻击 U8 已验收。schema 样本见 `tests/fixtures/nono-0.80.0/audit-*.json`。
+
+真实只读 smoke：`QN_TEST_NONO=/verified/nono QN_TEST_ROOT=/isolated/probe-root cargo test --locked -p qn-nono --test audit_reader -- --native`
+（只使用含合成审计记录的隔离根；默认不带 `--native` 时跑 Rust 子进程回归）。

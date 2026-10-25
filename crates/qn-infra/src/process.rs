@@ -35,6 +35,13 @@ use tokio_util::sync::CancellationToken;
 
 use crate::error::Error;
 
+mod environment;
+use environment::EnvironmentChange;
+mod managed;
+pub use managed::{
+    ManagedOutput, ManagedProcess, ProcessEnd, ProcessPolicy, TerminationSafety, spawn_managed,
+};
+
 /// 默认超时。调用方应经 qn-config 的用户配置覆盖（M0 阶段先用常量）。
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(120);
 
@@ -46,14 +53,14 @@ const STDERR_SUMMARY_BYTES: usize = 512;
 
 /// 外部命令描述（不可变 builder）。
 ///
-/// 只接受 argv 数组与显式 env 追加，不接受 shell 字符串——这是
+/// 只接受 argv 数组与显式环境编辑，不接受 shell 字符串——这是
 /// spec 08 §5 的强制约束：不提供隐式 shell 解释入口。
 #[derive(Debug, Clone)]
 #[must_use = "CmdSpec is a builder; call run/run_checked on it"]
 pub struct CmdSpec {
     program: String,
     args: Vec<String>,
-    env: Vec<(String, String)>,
+    env: Vec<EnvironmentChange>,
     cwd: Option<camino::Utf8PathBuf>,
     timeout: Option<Duration>,
     max_output_bytes: Option<usize>,
@@ -90,12 +97,6 @@ impl CmdSpec {
         self
     }
 
-    /// 追加（或覆盖）一个环境变量；其余环境继承自当前进程。
-    pub fn env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
-        self.env.push((key.into(), value.into()));
-        self
-    }
-
     /// 设置工作目录（UTF-8 路径，spec 02 §6）。
     pub fn cwd(mut self, cwd: impl Into<camino::Utf8PathBuf>) -> Self {
         self.cwd = Some(cwd.into());
@@ -120,8 +121,26 @@ impl CmdSpec {
         self
     }
 
+    /// argv 的只读视图（含程序名之后的参数）。诊断、断言与调用方日志使用。
+    #[must_use]
+    pub fn arg_values(&self) -> &[String] {
+        &self.args
+    }
+
     fn effective_label(&self) -> &str {
         self.label.as_deref().unwrap_or(&self.program)
+    }
+
+    fn command(&self) -> Command {
+        let mut command = Command::new(&self.program);
+        command.args(&self.args);
+        for change in &self.env {
+            change.apply(&mut command);
+        }
+        if let Some(cwd) = &self.cwd {
+            command.current_dir(cwd);
+        }
+        command
     }
 }
 
@@ -136,6 +155,12 @@ pub struct CmdOutcome {
     pub stdout: String,
     /// stderr（有界，UTF-8 lossy）。
     pub stderr: String,
+    /// stdout 原始字节（与 `stdout` 同源）。需要精确字节的调用方使用——
+    /// 例如非 UTF-8 输出（`wsl.exe` 的 UTF-16 UI 输出）不能经 lossy 字符串往返，
+    /// 否则解码前的字节已被替换破坏（`qn-wsl::decode` 的实测教训）。
+    pub stdout_raw: Vec<u8>,
+    /// stderr 原始字节（与 `stderr` 同源），语义同 [`CmdOutcome::stdout_raw`]。
+    pub stderr_raw: Vec<u8>,
     /// stdout 是否不完整：超出捕获上限被截断，或读取中途失败。
     pub stdout_truncated: bool,
     /// stderr 是否不完整：超出捕获上限被截断，或读取中途失败。
@@ -214,24 +239,14 @@ async fn run_inner(spec: &CmdSpec, cancel: Option<CancellationToken>) -> Result<
     let max_output = spec.max_output_bytes.unwrap_or(DEFAULT_MAX_OUTPUT_BYTES);
     let label = spec.effective_label().to_owned();
 
-    let mut command = Command::new(&spec.program);
+    let mut command = spec.command();
     command
-        .args(&spec.args)
         .kill_on_drop(true)
         // stdin=null：run-to-completion 语义的探测/管理命令不需要标准输入。
         // TODO(#27): 交互式 agent 会话需要 spawn + stdin 透传的长会话 API。
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
-    for (key, value) in &spec.env {
-        command.env(key, value);
-    }
-    // TODO(#27): env_clear/env_remove —— qn-nono 拉起沙箱进程前必须能剥离
-    // 宿主环境中的凭证变量（08 §4：凭证不进沙箱进程链）。
-    if let Some(cwd) = &spec.cwd {
-        command.current_dir(cwd);
-    }
-
     tracing::info!(
         label = %label,
         program = %spec.program,
@@ -301,6 +316,8 @@ async fn run_inner(spec: &CmdSpec, cancel: Option<CancellationToken>) -> Result<
         success: status.success(),
         stdout: String::from_utf8_lossy(&stdout).into_owned(),
         stderr: String::from_utf8_lossy(&stderr).into_owned(),
+        stdout_raw: stdout,
+        stderr_raw: stderr,
         stdout_truncated,
         stderr_truncated,
         duration,

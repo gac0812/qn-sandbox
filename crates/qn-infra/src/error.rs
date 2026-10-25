@@ -7,6 +7,26 @@
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
+    /// A managed process operation failed without exposing command/output values.
+    #[error("managed process {operation} failed: {source}; inspect process lifecycle state")]
+    ManagedIo {
+        /// Static operation identifier.
+        operation: &'static str,
+        /// Original operating-system error.
+        #[source]
+        source: std::io::Error,
+    },
+    /// Cleanup or output draining did not finish within its bound.
+    #[error("managed process {operation} deadline exceeded; cleanup is not confirmed")]
+    ManagedDeadline {
+        /// Static operation identifier.
+        operation: &'static str,
+    },
+    /// A numeric process/group identity can no longer be safely signalled.
+    #[error(
+        "managed parent was already reaped; verify remaining resources before retrying cleanup"
+    )]
+    CleanupUnconfirmed,
     /// 子进程无法启动（程序不存在、权限不足等）。
     /// 行动指引：检查程序路径与安装状态（如 `qn doctor` 的探测项）。
     #[error("failed to spawn `{program}`: {source}")]

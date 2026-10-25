@@ -5,5 +5,6 @@ pub mod domain;
 /// Core error types and result alias.
 pub mod error;
 
+pub use domain::execution::{GrantHandle, ProfileRef, RunSpec};
 pub use domain::session::{SessionId, SessionState};
 pub use error::{Error, Result};

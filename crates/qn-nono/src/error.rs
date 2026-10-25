@@ -1,13 +1,54 @@
-//! Typed failures of the nono installer and version probe.
+//! Typed failures of locked nono installation and CLI operations.
 //!
 //! Every variant carries an actionable message; the source chain is kept
 //! where an underlying cause exists (AGENTS §4.4).
 
 use std::io;
 
-/// Failures while installing or probing the locked `nono` release.
+/// Failures while installing, probing, or parsing the locked `nono` release.
 #[derive(Debug, thiserror::Error)]
 pub enum NonoError {
+    /// A bounded native query exited unsuccessfully; raw output is omitted.
+    #[error("nono {operation} failed with exit code {code:?}; check the managed state")]
+    CommandFailed {
+        /// Static operation label.
+        operation: &'static str,
+        /// Native exit code, absent when signalled.
+        code: Option<i32>,
+    },
+    /// The native query exceeded its time limit.
+    #[error("nono {operation} timed out; check the managed state before retrying")]
+    CommandTimedOut {
+        /// Static operation label.
+        operation: &'static str,
+    },
+    /// A native session identifier is not a full pinned-format ID.
+    #[error(
+        "invalid nono session ID; use a full 16-character lowercase hex ID from local session records"
+    )]
+    InvalidNonoSessionId,
+
+    /// A graceful stop cannot be represented as a bounded whole-second wait.
+    #[error("invalid nono stop timeout; use 1 to 300 whole seconds")]
+    InvalidStopTimeout,
+
+    /// Bounded output could not satisfy the pinned protocol contract.
+    #[error("invalid nono {operation} response: {reason}; check the pinned binary")]
+    Protocol {
+        /// Static operation name, never command arguments.
+        operation: &'static str,
+        /// Static rejection category, never raw output.
+        reason: &'static str,
+    },
+    /// JSON source is retained behind a redacted error boundary.
+    #[error("invalid nono {operation} JSON; check the pinned binary: {source}")]
+    ProtocolJson {
+        /// Static operation name.
+        operation: &'static str,
+        /// Parser cause with input values removed from all formatting.
+        #[source]
+        source: ProtocolJsonError,
+    },
     /// An invocation argument is invalid; its value is never echoed.
     #[error(
         "invalid nono {field}; use absolute UTF-8 paths and a nonempty command without NUL bytes"
@@ -39,8 +80,8 @@ pub enum NonoError {
         expected: &'static str,
     },
 
-    /// The shared runner failed to spawn, wait for, or finish the probe.
-    #[error("nono version probe could not complete; check the managed installation: {source}")]
+    /// The shared runner failed to spawn, wait for, or finish a command.
+    #[error("nono command could not complete; check the managed installation: {source}")]
     Process {
         /// Original process error, including timeout and OS failures.
         #[from]
@@ -82,10 +123,10 @@ pub enum NonoError {
         source: Box<ureq::Error>,
     },
 
-    /// The downloaded archive does not match the manifest digest. The
+    /// The cached or downloaded archive does not match the manifest digest. The
     /// artifact is refused: never install an unverifiable binary.
     #[error(
-        "downloaded archive checksum mismatch: expected {expected}, got {actual}; \
+        "nono archive checksum mismatch: expected {expected}, got {actual}; \
          refusing to install a tampered or corrupted artifact"
     )]
     ChecksumMismatch {
@@ -116,3 +157,24 @@ pub enum NonoError {
 
 /// Compatibility name for existing installer callers.
 pub type InstallerError = NonoError;
+
+/// Retains the parser cause without exposing payloads in Display, Debug or chains.
+/// serde data errors may quote untrusted values, so the inner cause is private.
+pub struct ProtocolJsonError(pub(crate) serde_json::Error);
+impl std::fmt::Display for ProtocolJsonError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{:?} at line {} column {}",
+            self.0.classify(),
+            self.0.line(),
+            self.0.column()
+        )
+    }
+}
+impl std::fmt::Debug for ProtocolJsonError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self, f)
+    }
+}
+impl std::error::Error for ProtocolJsonError {}
