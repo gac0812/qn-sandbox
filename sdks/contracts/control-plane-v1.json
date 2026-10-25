@@ -5,40 +5,127 @@
   "description": "Generated SDK input boundary; transport and authentication are defined separately.",
   "operations": [
     {
-      "name": "profile_list",
-      "method": "read",
-      "credential_posture": "none",
-      "input": {"type": "object", "properties": {}, "additionalProperties": false}
-    },
-    {
-      "name": "profile_show",
-      "method": "read",
-      "credential_posture": "none",
-      "input": {"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}, "additionalProperties": false}
-    },
-    {
-      "name": "session_status",
-      "method": "read",
-      "credential_posture": "none",
-      "input": {"type": "object", "required": ["session"], "properties": {"session": {"type": "string"}}, "additionalProperties": false}
-    },
-    {
-      "name": "session_stop",
-      "method": "write",
-      "credential_posture": "none",
-      "input": {"type": "object", "required": ["session"], "properties": {"session": {"type": "string"}}, "additionalProperties": false}
-    },
-    {
       "name": "audit_query",
       "method": "read",
       "credential_posture": "none",
-      "input": {"type": "object", "required": ["session"], "properties": {"session": {"type": "string"}}, "additionalProperties": false}
+      "input": {
+        "type": "object",
+        "required": [
+          "session"
+        ],
+        "properties": {
+          "session": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
     },
     {
       "name": "mcp_route_plan",
       "method": "read",
       "credential_posture": "host_mediated",
-      "input": {"type": "object", "required": ["name", "endpoint"], "properties": {"name": {"type": "string"}, "endpoint": {"type": "string"}}, "additionalProperties": false}
+      "input": {
+        "type": "object",
+        "required": [
+          "name",
+          "endpoint"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "endpoint": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "profile_list",
+      "method": "read",
+      "credential_posture": "none",
+      "input": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "profile_show",
+      "method": "read",
+      "credential_posture": "none",
+      "input": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "session_run",
+      "method": "write",
+      "credential_posture": "host_mediated",
+      "input": {
+        "type": "object",
+        "required": [
+          "profile",
+          "command"
+        ],
+        "properties": {
+          "profile": {
+            "type": "string"
+          },
+          "command": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "session_status",
+      "method": "read",
+      "credential_posture": "none",
+      "input": {
+        "type": "object",
+        "required": [
+          "session"
+        ],
+        "properties": {
+          "session": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "session_stop",
+      "method": "write",
+      "credential_posture": "none",
+      "input": {
+        "type": "object",
+        "required": [
+          "session"
+        ],
+        "properties": {
+          "session": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
     }
   ]
 }

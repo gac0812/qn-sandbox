@@ -521,3 +521,43 @@ mod envelope_tests {
         assert_eq!(result.validate(), Err(CatalogError::InvalidRequest));
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod sdk_contract_tests {
+    use super::{CredentialPosture, ToolCatalog, ToolName};
+    use serde_json::Value;
+
+    #[test]
+    fn sdk_fixture_names_and_postures_match_the_catalog() {
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../../sdks/contracts/control-plane-v1.json"
+        ))
+        .unwrap();
+        assert_eq!(fixture["schema_version"], 1);
+        let expected: Vec<_> = ToolCatalog::standard()
+            .tools
+            .into_iter()
+            .map(|tool| {
+                let posture = match tool.credential_posture {
+                    CredentialPosture::None => "none",
+                    CredentialPosture::HostMediated => "host_mediated",
+                };
+                (tool.name.as_str().to_owned(), posture)
+            })
+            .collect();
+        let actual: Vec<_> = fixture["operations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|operation| {
+                (
+                    operation["name"].as_str().unwrap().to_owned(),
+                    operation["credential_posture"].as_str().unwrap(),
+                )
+            })
+            .collect();
+        assert_eq!(actual, expected);
+        assert_eq!(ToolName::SessionRun.as_str(), "session_run");
+    }
+}
