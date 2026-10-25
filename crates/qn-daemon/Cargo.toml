@@ -13,10 +13,12 @@ qn-mcp = { path = "../qn-mcp", version = "0.1.0" }
 thiserror = "2"
 tokio-util = "0.7"
 
+serde_json = "1"
 [dev-dependencies]
 camino = "1"
 tempfile = "3"
 serde_json = "1"
+tokio = { version = "1", features = ["rt", "time"] }
 
 [lints]
 workspace = true

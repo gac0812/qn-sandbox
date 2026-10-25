@@ -81,6 +81,79 @@ impl ControlPlane {
         }
     }
 
+    /// Dispatches the read-only MCP tool surface without opening transport.
+    pub fn dispatch_mcp_request(&self, request: &qn_mcp::ToolRequest) -> qn_mcp::ToolResult {
+        let request_id = request.request_id.clone();
+        if let Err(error) = request.validate() {
+            return mcp_error(
+                request_id,
+                qn_mcp::ResultErrorCode::InvalidArguments,
+                error.to_string(),
+            );
+        }
+        match request.tool {
+            qn_mcp::ToolName::ProfileList => match self.list_profiles() {
+                Ok(profiles) => mcp_ok(
+                    request_id,
+                    serde_json::json!({"profiles": profiles.iter().map(|p| serde_json::json!({"id": p.id().as_str(), "version": p.version().as_str()})).collect::<Vec<_>>() }),
+                ),
+                Err(error) => mcp_error(
+                    request_id,
+                    qn_mcp::ResultErrorCode::Failed,
+                    error.to_string(),
+                ),
+            },
+            qn_mcp::ToolName::ProfileShow => {
+                let Some(id) = request
+                    .arguments
+                    .get("id")
+                    .and_then(serde_json::Value::as_str)
+                else {
+                    return mcp_error(
+                        request_id,
+                        qn_mcp::ResultErrorCode::InvalidArguments,
+                        "profile id must be a string".into(),
+                    );
+                };
+                let Ok(id) = qn_core::ProfileRef::try_from(id) else {
+                    return mcp_error(
+                        request_id,
+                        qn_mcp::ResultErrorCode::InvalidArguments,
+                        "profile id is invalid".into(),
+                    );
+                };
+                match self.resolve_profile(id) {
+                    Ok(profile) => mcp_ok(
+                        request_id,
+                        serde_json::json!({
+                            "id": profile.summary().id().as_str(),
+                            "version": profile.summary().version().as_str(),
+                            "state_dir": profile.state_dir(),
+                            "network_hosts": profile.network_hosts(),
+                        }),
+                    ),
+                    Err(error) => mcp_error(
+                        request_id,
+                        qn_mcp::ResultErrorCode::Failed,
+                        error.to_string(),
+                    ),
+                }
+            }
+            qn_mcp::ToolName::SessionStatus | qn_mcp::ToolName::AuditQuery => mcp_error(
+                request_id,
+                qn_mcp::ResultErrorCode::Failed,
+                "session/audit dispatch is not activated".into(),
+            ),
+            qn_mcp::ToolName::SessionRun
+            | qn_mcp::ToolName::SessionStop
+            | qn_mcp::ToolName::McpRoutePlan => mcp_error(
+                request_id,
+                qn_mcp::ResultErrorCode::Denied,
+                "MCP operation requires an enabled authorization surface".into(),
+            ),
+        }
+    }
+
     /// Builds the local composition from an absolute qn home.
     ///
     /// # Errors
@@ -241,6 +314,26 @@ impl ControlPlane {
         mode: StopMode,
     ) -> Result<StopReport, SessionError> {
         qn_bootstrap::stop_session(&self.paths, id, mode).await
+    }
+}
+
+fn mcp_ok(request_id: String, value: serde_json::Value) -> qn_mcp::ToolResult {
+    qn_mcp::ToolResult {
+        schema_version: qn_mcp::CATALOG_SCHEMA_VERSION,
+        request_id,
+        outcome: qn_mcp::ToolOutcome::Ok { value },
+    }
+}
+
+fn mcp_error(
+    request_id: String,
+    code: qn_mcp::ResultErrorCode,
+    message: String,
+) -> qn_mcp::ToolResult {
+    qn_mcp::ToolResult {
+        schema_version: qn_mcp::CATALOG_SCHEMA_VERSION,
+        request_id,
+        outcome: qn_mcp::ToolOutcome::Error { code, message },
     }
 }
 
