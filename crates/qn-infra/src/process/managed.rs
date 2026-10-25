@@ -87,10 +87,20 @@ impl fmt::Debug for ManagedProcess {
 /// Returns a typed spawn failure. See qn-bootstrap for a runnable composition example.
 pub fn spawn_managed(spec: &CmdSpec, policy: &dyn ProcessPolicy) -> Result<ManagedProcess, Error> {
     let mut command = spec.command();
-    command
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+    match spec.stdio_mode() {
+        super::StdioMode::Captured => {
+            command
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+        }
+        super::StdioMode::Inherited => {
+            command
+                .stdin(Stdio::inherit())
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit());
+        }
+    }
     let mut wrapped = TokioCommandWrap::from(command);
     wrapped.wrap(KillOnDrop);
     let safety = policy.configure(&mut wrapped);

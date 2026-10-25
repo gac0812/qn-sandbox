@@ -51,6 +51,15 @@ pub const DEFAULT_MAX_OUTPUT_BYTES: usize = 1 << 20;
 /// stderr 写入 `Error::Failed` 摘要的最大字节数。
 const STDERR_SUMMARY_BYTES: usize = 512;
 
+/// Whether a managed child owns the terminal or is captured for parsing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StdioMode {
+    /// Capture bounded stdout/stderr and expose a stdin pipe.
+    Captured,
+    /// Inherit the caller's terminal for an interactive foreground session.
+    Inherited,
+}
+
 /// 外部命令描述（不可变 builder）。
 ///
 /// 只接受 argv 数组与显式环境编辑，不接受 shell 字符串——这是
@@ -65,6 +74,7 @@ pub struct CmdSpec {
     timeout: Option<Duration>,
     max_output_bytes: Option<usize>,
     label: Option<String>,
+    stdio: StdioMode,
 }
 
 impl CmdSpec {
@@ -78,7 +88,23 @@ impl CmdSpec {
             timeout: None,
             max_output_bytes: None,
             label: None,
+            stdio: StdioMode::Captured,
         }
+    }
+
+    /// Inherit the caller's stdin/stdout/stderr for an interactive foreground child.
+    ///
+    /// Only [`spawn_managed`] honours this mode. `run`/`run_checked` stay
+    /// captured because they parse bounded output and do not expose a terminal.
+    pub fn inherit_stdio(mut self) -> Self {
+        self.stdio = StdioMode::Inherited;
+        self
+    }
+
+    /// Whether this command captures output or owns the terminal.
+    #[must_use]
+    pub fn stdio_mode(&self) -> StdioMode {
+        self.stdio
     }
 
     /// 追加单个参数（原值透传，不做任何 shell 解释）。

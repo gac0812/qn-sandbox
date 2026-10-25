@@ -27,3 +27,7 @@ R6 的 `#[cfg(target_os)]` 白名单位置之一）。
 ## 非目标
 
 - 运行时业务逻辑；profile 内容管理；路径创建（属使用方）。
+
+`QnPaths.runtime` 是 `<root>/runtime`：前台会话的私有运行根、owner 记录和控制关联。
+`platform_host_home()` 解析宿主 home 供 profile 物理路径防护；不可得或非 UTF-8 时返回
+`None`，调用方必须 fail closed，不能跳过受保护路径检查。

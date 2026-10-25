@@ -24,6 +24,8 @@ Sandbox/Session/Profile 等领域词汇。
   环境编辑的 Debug 隐藏名称和值；这不改变 argv/输出现有的日志策略，不应向其中传入凭证。
 - `spawn_managed(spec, policy)`（#65）返回拥有 stdin 和捕获任务的句柄；`take_stdin()` 交给调用方写入，
   `wait(cancel)` 等待结果，取消 token 即请求终止。输出默认 Debug、事件和错误不带载荷，解析器通过 `output()` 显式访问。
+- `CmdSpec::inherit_stdio()` 让受管前台子进程继承终端（交互式 Agent 会话）；只有 `spawn_managed`
+  遵循该模式，`run*` 仍是有界捕获的 run-to-completion API。继承模式下无捕获输出。
 - 平台策略由 bootstrap 注入；取消/超时先终止组再回收，Drop 只作尽力清理并取消读任务。
   Unix 父进程已回收时拒绝用陈旧 PGID 补杀。进程组不能约束主动脱组的进程，不等同于安全沙箱。
 - 已知边界（#27）：旧 `run*` 仍仅终止直接子进程；生产 adapter 的受管路径接入及 nono 清理验收尚未完成。

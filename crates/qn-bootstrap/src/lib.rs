@@ -187,3 +187,327 @@ fn read_asset(path: &camino::Utf8Path) -> Result<String, qn_core::profile::Profi
     }
     String::from_utf8(bytes).map_err(|_| qn_core::profile::ProfileError::InvalidCatalog)
 }
+
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+struct SessionRecord {
+    schema_version: u8,
+    session_id: String,
+    profile: String,
+    native_id: String,
+    runtime_root: String,
+    phase: qn_core::runtime::RunPhase,
+    end: Option<qn_core::runtime::RunEnd>,
+    exit_code: Option<i32>,
+    cleanup: qn_core::runtime::CleanupState,
+}
+
+/// Run one official profile in the foreground and return an exit observation.
+///
+/// The managed parent inherits the terminal. The engine archive/binary is
+/// verified before execution, a predetermined native identity is reserved, and
+/// the launch-owned audit association is published before spawn. Cleanup is
+/// always reported unconfirmed: the managed parent's exit never proves that
+/// every descendant terminated (#93).
+///
+/// Cancel the token to request termination; the managed group is stopped and
+/// awaited, but the result remains an unconfirmed-cleanup observation.
+///
+/// # Errors
+///
+/// Returns [`qn_core::runtime::SessionError`] for profile/engine failures,
+/// unsupported hosts, invalid storage and native process errors.
+pub async fn run_session(
+    paths: &qn_config::paths::QnPaths,
+    spec: qn_core::RunSpec,
+    resolved: &qn_core::profile::ResolvedProfile,
+    cancel: tokio_util::sync::CancellationToken,
+) -> Result<qn_core::runtime::RunReport, qn_core::runtime::SessionError> {
+    use qn_core::runtime::{CleanupState, RunEnd, RunPhase, RunReport, SessionError};
+
+    if spec.profile() != resolved.summary().id() {
+        return Err(SessionError::InvalidRequest);
+    }
+    let setup = engine_setup(paths).map_err(|error| SessionError::Engine(Box::new(error)))?;
+    let installation = setup
+        .run(qn_core::setup::SetupOperation::Inspect)
+        .await
+        .map_err(|error| SessionError::Engine(Box::new(error)))?;
+    create_private_dir(&paths.runtime)?;
+    create_private_dir(&paths.audit)?;
+    let control = paths.runtime.join("control");
+    create_private_dir(&control)?;
+    let binding = qn_nono::launch::LaunchBinding::reserve(&control, spec.id())
+        .map_err(|error| SessionError::Process(Box::new(error)))?;
+    let root = paths.runtime.join(spec.id().to_string());
+    create_private_dir(&root)?;
+    let home = qn_config::paths::platform_host_home().ok_or(SessionError::Unsupported)?;
+    let runtime_paths = qn_nono::profile::RuntimePaths {
+        control_root: control,
+        host_homes: vec![home],
+        engine_binary: installation.path,
+        tool_dirs: tool_dirs()?,
+    };
+    let prepared = qn_nono::profile::PreparedOfficial::prepare(
+        spec.clone(),
+        &runtime_paths,
+        root.clone(),
+        resolved.nono_profile(),
+        resolved.state_dir(),
+    )
+    .map_err(|error| SessionError::Process(Box::new(error)))?;
+    binding
+        .publish_audit(&paths.audit, &paths.runtime)
+        .map_err(|error| SessionError::Process(Box::new(error)))?;
+    let command = prepared
+        .bound_run_command(&binding)
+        .map_err(|error| SessionError::Process(Box::new(error)))?;
+    let process = qn_infra::process::spawn_managed(&command, &process_policy())
+        .map_err(|error| SessionError::Process(Box::new(error)))?;
+
+    let record = |phase, end, exit_code| SessionRecord {
+        schema_version: 1,
+        session_id: spec.id().to_string(),
+        profile: spec.profile().as_str().to_owned(),
+        native_id: binding.native_id().as_str().to_owned(),
+        runtime_root: root.as_str().to_owned(),
+        phase,
+        end,
+        exit_code,
+        cleanup: CleanupState::Unconfirmed,
+    };
+    write_record(paths, &record(RunPhase::Running, None, None))?;
+    let output = match process.wait(cancel).await {
+        Ok(output) => output,
+        Err(error) => {
+            let _ = write_record(paths, &record(RunPhase::Failed, None, None));
+            return Err(SessionError::Process(Box::new(error)));
+        }
+    };
+    let end = match output.end {
+        qn_infra::process::ProcessEnd::Exited => RunEnd::Exited,
+        qn_infra::process::ProcessEnd::Cancelled => RunEnd::Cancelled,
+        qn_infra::process::ProcessEnd::TimedOut => RunEnd::TimedOut,
+    };
+    let exit_code = output.output().exit_code;
+    let report = RunReport::new(
+        spec.id(),
+        qn_core::ProfileRef::try_from(spec.profile().as_str())
+            .map_err(|_| SessionError::InvalidRequest)?,
+        binding.native_id().as_str().to_owned(),
+        RunPhase::ExitedObserved,
+        end,
+        exit_code,
+    );
+    write_record(
+        paths,
+        &record(RunPhase::ExitedObserved, Some(end), exit_code),
+    )?;
+    Ok(report)
+}
+
+/// Read the persisted owner record and, when available, live native state.
+///
+/// A missing engine or native query does not hide the owner record. The result
+/// never claims `Stopped` or confirmed cleanup.
+///
+/// # Errors
+///
+/// Returns [`qn_core::runtime::SessionError::UnknownSession`] when no record
+/// exists and storage/validation errors for an unreadable record.
+pub async fn status_session(
+    paths: &qn_config::paths::QnPaths,
+    id: qn_core::SessionId,
+) -> Result<qn_core::runtime::SessionStatus, qn_core::runtime::SessionError> {
+    use qn_core::runtime::SessionStatus;
+
+    let record = read_record(paths, id)?;
+    let profile = qn_core::ProfileRef::try_from(record.profile.as_str())
+        .map_err(|_| qn_core::runtime::SessionError::InvalidRequest)?;
+    let runtime_root = camino::Utf8PathBuf::from(record.runtime_root.as_str());
+    let native = observe_native(paths, id, runtime_root).await.ok().flatten();
+    Ok(SessionStatus::new(
+        id,
+        profile,
+        record.phase,
+        record.end,
+        record.exit_code,
+        native,
+    ))
+}
+
+/// Ask the native engine to stop a recorded session.
+///
+/// The command uses the predetermined native ID from the owner record, never a
+/// numeric PID or PGID. A completed request is not a cleanup proof; every
+/// report carries unconfirmed cleanup.
+///
+/// # Errors
+///
+/// Returns [`qn_core::runtime::SessionError`] for unknown/already-exited
+/// sessions, engine failure and native stop failure.
+pub async fn stop_session(
+    paths: &qn_config::paths::QnPaths,
+    id: qn_core::SessionId,
+    mode: qn_core::runtime::StopMode,
+) -> Result<qn_core::runtime::StopReport, qn_core::runtime::SessionError> {
+    use qn_core::runtime::{RunPhase, SessionError, StopMode, StopReport};
+
+    let record = read_record(paths, id)?;
+    if record.phase == RunPhase::ExitedObserved {
+        return Err(SessionError::AlreadyExited);
+    }
+    let native_id = qn_nono::args::NonoSessionId::try_from(record.native_id.as_str())
+        .map_err(|error| SessionError::Process(Box::new(error)))?;
+    let setup = engine_setup(paths).map_err(|error| SessionError::Engine(Box::new(error)))?;
+    let installation = setup
+        .run(qn_core::setup::SetupOperation::Inspect)
+        .await
+        .map_err(|error| SessionError::Engine(Box::new(error)))?;
+    let native_mode = match mode {
+        StopMode::Graceful { timeout_secs } => qn_nono::args::NonoStopMode::Graceful {
+            timeout: std::time::Duration::from_secs(timeout_secs),
+        },
+        StopMode::Force => qn_nono::args::NonoStopMode::Force,
+    };
+    let args = qn_nono::NonoArgs::stop(&native_id, native_mode)
+        .map_err(|error| SessionError::Process(Box::new(error)))?;
+    let runtime_root = camino::Utf8PathBuf::from(record.runtime_root.as_str());
+    let command = session_environment(
+        qn_infra::process::CmdSpec::new(installation.path.as_str())
+            .args(args.as_slice().iter().cloned())
+            .env_clear()
+            .env("PATH", "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin")
+            .env("LANG", "C"),
+        &runtime_root,
+    )
+    .timeout(std::time::Duration::from_secs(320))
+    .label("nono stop");
+    qn_infra::process::run_checked(&command)
+        .await
+        .map_err(|error| SessionError::Process(Box::new(error)))?;
+    Ok(StopReport::new(id, true))
+}
+
+async fn observe_native(
+    paths: &qn_config::paths::QnPaths,
+    id: qn_core::SessionId,
+    runtime_root: camino::Utf8PathBuf,
+) -> Result<Option<qn_core::runtime::ObservedNativeState>, qn_core::runtime::SessionError> {
+    use qn_core::runtime::{ObservedNativeState, SessionError};
+
+    let setup = engine_setup(paths).map_err(|error| SessionError::Engine(Box::new(error)))?;
+    let installation = setup
+        .run(qn_core::setup::SetupOperation::Inspect)
+        .await
+        .map_err(|error| SessionError::Engine(Box::new(error)))?;
+    let reader = qn_nono::session::SessionReader::new(
+        installation.path,
+        runtime_root,
+        std::sync::Arc::new(process_policy()),
+    )
+    .map_err(|error| SessionError::Process(Box::new(error)))?;
+    let observed = reader
+        .find(id)
+        .await
+        .map_err(|error| SessionError::Process(Box::new(error)))?;
+    Ok(observed.map(|session| match session.state() {
+        qn_nono::session::NativeSessionState::Running => ObservedNativeState::Running,
+        qn_nono::session::NativeSessionState::Paused => ObservedNativeState::Paused,
+        qn_nono::session::NativeSessionState::Exited => ObservedNativeState::Exited,
+    }))
+}
+
+fn session_environment(
+    mut command: qn_infra::process::CmdSpec,
+    root: &camino::Utf8Path,
+) -> qn_infra::process::CmdSpec {
+    for (key, dir) in [
+        ("HOME", "home"),
+        ("XDG_CONFIG_HOME", "config"),
+        ("XDG_STATE_HOME", "state"),
+        ("XDG_CACHE_HOME", "cache"),
+        ("TMPDIR", "tmp"),
+    ] {
+        command = command.env(key, root.join(dir).as_str());
+    }
+    command
+}
+
+fn create_private_dir(path: &camino::Utf8Path) -> Result<(), qn_core::runtime::SessionError> {
+    std::fs::create_dir_all(path).map_err(qn_core::runtime::SessionError::Storage)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
+            .map_err(qn_core::runtime::SessionError::Storage)?;
+    }
+    Ok(())
+}
+
+fn tool_dirs() -> Result<Vec<camino::Utf8PathBuf>, qn_core::runtime::SessionError> {
+    #[cfg(unix)]
+    {
+        let dirs: Vec<_> = ["/usr/bin", "/bin", "/usr/local/bin", "/opt/homebrew/bin"]
+            .into_iter()
+            .map(camino::Utf8PathBuf::from)
+            .filter(|path| path.is_dir())
+            .collect();
+        if dirs.is_empty() {
+            return Err(qn_core::runtime::SessionError::Unsupported);
+        }
+        Ok(dirs)
+    }
+    #[cfg(not(unix))]
+    {
+        Err(qn_core::runtime::SessionError::Unsupported)
+    }
+}
+
+fn write_record(
+    paths: &qn_config::paths::QnPaths,
+    record: &SessionRecord,
+) -> Result<(), qn_core::runtime::SessionError> {
+    use std::io::Write as _;
+    let mut file = tempfile::NamedTempFile::new_in(&paths.runtime)
+        .map_err(qn_core::runtime::SessionError::Storage)?;
+    file.write_all(
+        serde_json::to_vec(record)
+            .map_err(|_| qn_core::runtime::SessionError::InvalidRequest)?
+            .as_slice(),
+    )
+    .map_err(qn_core::runtime::SessionError::Storage)?;
+    file.as_file()
+        .sync_all()
+        .map_err(qn_core::runtime::SessionError::Storage)?;
+    file.persist(paths.runtime.join(format!("{}.json", record.session_id)))
+        .map_err(|error| qn_core::runtime::SessionError::Storage(error.error))?;
+    Ok(())
+}
+
+fn read_record(
+    paths: &qn_config::paths::QnPaths,
+    id: qn_core::SessionId,
+) -> Result<SessionRecord, qn_core::runtime::SessionError> {
+    use qn_core::runtime::SessionError;
+    let path = paths.runtime.join(format!("{id}.json"));
+    let metadata = std::fs::symlink_metadata(&path).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::NotFound {
+            SessionError::UnknownSession
+        } else {
+            SessionError::Storage(error)
+        }
+    })?;
+    if !metadata.file_type().is_file() || metadata.len() > 64 * 1024 {
+        return Err(SessionError::Storage(std::io::Error::other(
+            "invalid session record",
+        )));
+    }
+    let bytes = std::fs::read(&path).map_err(SessionError::Storage)?;
+    let record: SessionRecord =
+        serde_json::from_slice(&bytes).map_err(|_| SessionError::InvalidRequest)?;
+    if record.schema_version != 1 || record.session_id != id.to_string() {
+        return Err(SessionError::InvalidRequest);
+    }
+    Ok(record)
+}

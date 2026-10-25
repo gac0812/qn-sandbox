@@ -10,3 +10,9 @@ engine_setup(&QnPaths) 装配 qn-nono 的 core EngineSetup 实现；缓存根由
 
 native_audit_query 通过 core NativeAuditQuery 暴露 retained qn/native 关联查询；
 注入既有 process_policy 与受管缓存/审计目录，不改变 broker 源时钟与语义。
+
+`run_session` / `status_session` / `stop_session` 组合托管引擎、已解析 profile、
+`LaunchBinding` 与受管前台进程。run 在私有 `QN_HOME/runtime/<session>` 写入官方资产、
+发布审计关联并继承终端；status 读取 owner 记录并可选查询原生 `ps --all`；stop 只按记录中的
+预定 native ID 调用锁版 `nono stop`。三者都返回 `cleanup=unconfirmed`，不把父进程退出、
+`ps` 消失或 stop 返回 0 映射为 `Stopped`（#93）。
