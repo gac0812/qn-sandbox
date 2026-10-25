@@ -7,19 +7,22 @@ publish.workspace = true
 
 [dependencies]
 qn-infra = { path = "../qn-infra", version = "0.1.0" }
-camino = "1"
-thiserror = "2"
 tokio-util = "0.7"
-zeroize = "1.9.1"
+camino = "1"
+qn-core = { path = "../qn-core", version = "0.1.0" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+thiserror = "2"
+toml = "0.9"
+
+getrandom = "0.3.4"
+snow = { version = "0.10", default-features = false, features = ["use-getrandom", "use-curve25519", "use-chacha20poly1305", "use-sha2"] }
+tokio = { version = "1", features = ["net", "io-util", "time"] }
+zeroize = { version = "1.9.1", features = ["serde"] }
 
 [dev-dependencies]
-qn-bootstrap = { path = "../qn-bootstrap", version = "0.1.0" }
-tokio = { version = "1", features = ["rt", "macros", "net", "io-util", "time"] }
-tracing = "0.1"
-
-[[test]]
-name = "host_provider"
-harness = false
+tokio = { version = "1", features = ["rt", "macros", "test-util"] }
 
 [lints]
 workspace = true
