@@ -197,7 +197,19 @@ fn it_requires_an_install_before_a_rollback() {
 fn it_builds_the_strict_native_validation_command() {
     let (_directory, path) = root();
     let registry = HostProfileRegistry::new(path).unwrap();
-    let asset = Utf8Path::new("/private/profile.json");
+    // 夹具路径须是**当前平台**的绝对路径（validate_path 按 host 语义校验）；
+    // 断言与夹具同源，避免 Unix/Windows 形态漂移。
+    let (asset, expected_last): (&Utf8Path, &str) = if cfg!(windows) {
+        (
+            Utf8Path::new(r"C:\private\profile.json"),
+            r"C:\private\profile.json",
+        )
+    } else {
+        (
+            Utf8Path::new("/private/profile.json"),
+            "/private/profile.json",
+        )
+    };
     let args = registry
         .validation_args(&identity("qn/codex"), asset)
         .unwrap();
@@ -209,7 +221,7 @@ fn it_builds_the_strict_native_validation_command() {
             "--json",
             "--strict",
             "--",
-            "/private/profile.json"
+            expected_last
         ]
     );
     assert!(
