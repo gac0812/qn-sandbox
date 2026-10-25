@@ -9,6 +9,7 @@ use qn_core::profile::ProfileRegistry;
 use qn_core::runtime::{RunReport, SessionError, SessionStatus, StopMode, StopReport};
 use qn_core::setup::EngineSetup;
 use qn_core::{RunSpec, SessionId};
+use qn_mcp::{ToolCatalog, ToolOutcome, ToolRequest, ToolResult};
 use tokio_util::sync::CancellationToken;
 
 /// Errors raised while composing the local control plane.
@@ -42,6 +43,44 @@ pub struct ControlPlane {
 }
 
 impl ControlPlane {
+    /// Validates an MCP request against the catalog without executing a tool.
+    ///
+    /// This boundary is transport-neutral; later dispatchers can map a
+    /// validated request to shared services without exposing adapter types.
+    #[must_use]
+    pub fn validate_mcp_request(&self, request: &ToolRequest) -> ToolResult {
+        let request_id = request.request_id.clone();
+        if let Err(error) = request.validate() {
+            return ToolResult {
+                schema_version: qn_mcp::CATALOG_SCHEMA_VERSION,
+                request_id,
+                outcome: ToolOutcome::Error {
+                    code: qn_mcp::ResultErrorCode::InvalidArguments,
+                    message: error.to_string(),
+                },
+            };
+        }
+        let catalog = ToolCatalog::standard();
+        if !catalog.tools.iter().any(|tool| tool.name == request.tool) {
+            return ToolResult {
+                schema_version: qn_mcp::CATALOG_SCHEMA_VERSION,
+                request_id,
+                outcome: ToolOutcome::Error {
+                    code: qn_mcp::ResultErrorCode::UnknownTool,
+                    message: "requested MCP tool is not in the catalog".into(),
+                },
+            };
+        }
+        ToolResult {
+            schema_version: qn_mcp::CATALOG_SCHEMA_VERSION,
+            request_id,
+            outcome: ToolOutcome::Error {
+                code: qn_mcp::ResultErrorCode::Failed,
+                message: "MCP dispatch is not activated; use a configured surface".into(),
+            },
+        }
+    }
+
     /// Builds the local composition from an absolute qn home.
     ///
     /// # Errors
@@ -259,5 +298,46 @@ mod tests {
         assert_eq!(summaries.len(), 2);
         assert!(!root.path().join("runtime").exists());
         assert!(!root.path().join("audit").exists());
+    }
+
+    #[cfg(test)]
+    #[allow(clippy::unwrap_used, clippy::expect_used)]
+    mod mcp_dispatch_tests {
+        use super::ControlPlane;
+        use qn_mcp::ToolOutcome;
+
+        #[test]
+        fn it_returns_closed_results_without_executing_a_tool() {
+            let plane =
+                ControlPlane::new(qn_config::paths::QnPaths::from_root("/tmp/qn-daemon-mcp"))
+                    .unwrap();
+            let request = qn_mcp::ToolRequest {
+                schema_version: 1,
+                request_id: "req-1".into(),
+                tool: qn_mcp::ToolName::SessionStatus,
+                arguments: serde_json::json!({"session": "sxn-test"}),
+            };
+            let result = plane.validate_mcp_request(&request);
+            assert_eq!(result.request_id, "req-1");
+            assert!(matches!(
+                result.outcome,
+                ToolOutcome::Error {
+                    code: qn_mcp::ResultErrorCode::Failed,
+                    ..
+                }
+            ));
+            let bad = qn_mcp::ToolRequest {
+                arguments: serde_json::json!(["secret"]),
+                ..request
+            };
+            let result = plane.validate_mcp_request(&bad);
+            assert!(matches!(
+                result.outcome,
+                ToolOutcome::Error {
+                    code: qn_mcp::ResultErrorCode::InvalidArguments,
+                    ..
+                }
+            ));
+        }
     }
 }

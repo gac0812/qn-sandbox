@@ -929,6 +929,8 @@ dependencies = [
  "qn-bootstrap",
  "qn-config",
  "qn-core",
+ "qn-mcp",
+ "serde_json",
  "tempfile",
  "thiserror",
  "tokio-util",
