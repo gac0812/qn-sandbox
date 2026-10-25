@@ -64,11 +64,17 @@ pub enum Command {
         /// Executable and arguments after `--`.
         #[arg(last = true, required = true)]
         command: Vec<String>,
+        /// Emit a versioned machine-readable session report.
+        #[arg(long)]
+        json: bool,
     },
     /// Show the owner record and any live native observation for a session.
     Status {
         /// Canonical qn session identifier.
         session: String,
+        /// Emit a versioned machine-readable session report.
+        #[arg(long)]
+        json: bool,
     },
     /// Ask the native engine to stop a recorded session.
     Stop {
@@ -80,6 +86,9 @@ pub enum Command {
         /// Grace period in whole seconds (1-300); ignored with --force.
         #[arg(long, default_value_t = 10)]
         timeout: u64,
+        /// Emit a versioned machine-readable stop report.
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -164,13 +173,18 @@ pub fn run(cli: &Cli, output: &mut dyn Write) -> Result<(), Error> {
         Command::Audit { command } => audit::run(command, output),
         Command::Doctor { json, config_only } => doctor(output, *json, *config_only),
         Command::Profile { command } => profile::run(command, output),
-        Command::Run { profile, command } => session::run(profile, command.clone(), output),
-        Command::Status { session: id } => session::status(id, output),
+        Command::Run {
+            profile,
+            command,
+            json,
+        } => session::run(profile, command.clone(), *json, output),
+        Command::Status { session: id, json } => session::status(id, *json, output),
         Command::Stop {
             session: id,
             force,
             timeout,
-        } => session::stop(id, *force, *timeout, output),
+            json,
+        } => session::stop(id, *force, *timeout, *json, output),
     }
 }
 
