@@ -895,9 +895,11 @@ dependencies = [
 name = "qn-daemon"
 version = "0.1.0"
 dependencies = [
+ "camino",
  "qn-bootstrap",
  "qn-config",
  "qn-core",
+ "tempfile",
  "thiserror",
  "tokio-util",
 ]
