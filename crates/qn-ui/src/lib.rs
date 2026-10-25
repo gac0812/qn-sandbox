@@ -1360,3 +1360,68 @@ mod validation_tests {
         );
     }
 }
+
+/// Maps a UI intent to the route whose view should be refreshed or updated.
+#[must_use]
+pub fn intent_route(intent: &UiIntent) -> ViewRoute {
+    match intent {
+        UiIntent::Refresh { route } | UiIntent::Retry { route } => *route,
+        UiIntent::StopSession { .. } => ViewRoute::Sessions,
+        UiIntent::RevokeSession { .. } => ViewRoute::Permissions,
+    }
+}
+
+/// Whether an intent is allowed by the current snapshot state.
+#[must_use]
+pub fn intent_allowed(snapshot: &ControlPlaneSnapshot, intent: &UiIntent) -> bool {
+    match intent {
+        UiIntent::Refresh { .. } | UiIntent::Retry { .. } => true,
+        UiIntent::StopSession { .. } => {
+            matches!(&snapshot.sessions, ViewState::Ready(cards) if cards.iter().any(|card| card.phase == "starting" || card.phase == "running"))
+        }
+        UiIntent::RevokeSession { .. } => matches!(
+            &snapshot.permissions,
+            ViewState::Ready(PermissionPosture::HostMediated)
+        ),
+    }
+}
+
+#[cfg(test)]
+mod action_routing_tests {
+    use super::*;
+    #[test]
+    fn actions_route_to_their_own_view_and_respect_posture() {
+        let ready = PreviewPreset::Ready.snapshot();
+        assert_eq!(
+            intent_route(&UiIntent::StopSession {
+                session: "sxn".into()
+            }),
+            ViewRoute::Sessions
+        );
+        assert_eq!(
+            intent_route(&UiIntent::RevokeSession {
+                session: "sxn".into()
+            }),
+            ViewRoute::Permissions
+        );
+        assert!(intent_allowed(
+            &ready,
+            &UiIntent::StopSession {
+                session: "sxn".into()
+            }
+        ));
+        assert!(intent_allowed(
+            &ready,
+            &UiIntent::RevokeSession {
+                session: "sxn".into()
+            }
+        ));
+        let degraded = PreviewPreset::Degraded.snapshot();
+        assert!(!intent_allowed(
+            &degraded,
+            &UiIntent::RevokeSession {
+                session: "sxn".into()
+            }
+        ));
+    }
+}
