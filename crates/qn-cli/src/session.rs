@@ -10,6 +10,7 @@ use std::{io::Write, time::Duration};
 pub(crate) fn run(
     profile: &str,
     command: Vec<String>,
+    json: bool,
     output: &mut dyn Write,
 ) -> Result<(), Error> {
     let profile = ProfileRef::try_from(profile)?;
@@ -30,6 +31,19 @@ pub(crate) fn run(
     handle.abort();
     runtime.shutdown_timeout(Duration::from_millis(100));
     let report = result?;
+    if json {
+        let payload = serde_json::json!({
+            "schema_version": 1,
+            "session": report.session().to_string(),
+            "profile": report.profile().to_string(),
+            "native": report.native_id(),
+            "end": end_label(report.end()),
+            "exit_code": report.exit_code(),
+            "cleanup": "unconfirmed",
+        });
+        writeln!(output, "{}", serde_json::to_string(&payload)?)?;
+        return Ok(());
+    }
     writeln!(output, "session: {}", report.session())?;
     writeln!(output, "profile: {}", report.profile())?;
     writeln!(output, "native: {}", report.native_id())?;
@@ -54,13 +68,27 @@ pub(crate) fn run(
     Ok(())
 }
 
-pub(crate) fn status(session: &str, output: &mut dyn Write) -> Result<(), Error> {
+pub(crate) fn status(session: &str, json: bool, output: &mut dyn Write) -> Result<(), Error> {
     let id = SessionId::try_from(session)?;
     let paths = qn_config::paths::QnPaths::resolve()?;
     let runtime = runtime()?;
     let result = runtime.block_on(qn_bootstrap::status_session(&paths, id));
     runtime.shutdown_timeout(Duration::from_millis(100));
     let status = result?;
+    if json {
+        let payload = serde_json::json!({
+            "schema_version": 1,
+            "session": status.session().to_string(),
+            "profile": status.profile().to_string(),
+            "phase": phase_label(status.phase()),
+            "end": status.end().map(end_label),
+            "exit_code": status.exit_code(),
+            "native": status.native().map(native_label),
+            "cleanup": "unconfirmed",
+        });
+        writeln!(output, "{}", serde_json::to_string(&payload)?)?;
+        return Ok(());
+    }
     writeln!(output, "session: {}", status.session())?;
     writeln!(output, "profile: {}", status.profile())?;
     writeln!(output, "phase: {}", phase_label(status.phase()))?;
@@ -87,6 +115,7 @@ pub(crate) fn stop(
     session: &str,
     force: bool,
     timeout: u64,
+    json: bool,
     output: &mut dyn Write,
 ) -> Result<(), Error> {
     if !force && !(1..=300).contains(&timeout) {
@@ -105,6 +134,16 @@ pub(crate) fn stop(
     let result = runtime.block_on(qn_bootstrap::stop_session(&paths, id, mode));
     runtime.shutdown_timeout(Duration::from_millis(100));
     let report = result?;
+    if json {
+        let payload = serde_json::json!({
+            "schema_version": 1,
+            "session": report.session().to_string(),
+            "requested": report.requested(),
+            "cleanup": "unconfirmed",
+        });
+        writeln!(output, "{}", serde_json::to_string(&payload)?)?;
+        return Ok(());
+    }
     writeln!(output, "session: {}", report.session())?;
     writeln!(output, "stop requested: {}", report.requested())?;
     writeln!(

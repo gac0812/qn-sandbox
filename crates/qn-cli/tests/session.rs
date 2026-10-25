@@ -236,3 +236,28 @@ fn it_stops_a_running_session_without_claiming_cleanup() {
     assert!(text.contains("phase: exited_observed"), "{text}");
     assert!(text.contains("cleanup: unconfirmed"), "{text}");
 }
+
+#[test]
+fn it_advertises_session_json_options() {
+    let root = tempfile::tempdir().unwrap();
+    for args in [["run", "--help"], ["status", "--help"], ["stop", "--help"]] {
+        let output = run(root.path(), &args);
+        assert!(output.status.success(), "{args:?}: {output:?}");
+        let text = String::from_utf8(output.stdout).unwrap();
+        assert!(text.contains("--json"), "{args:?}: {text}");
+    }
+}
+
+#[test]
+fn it_keeps_session_json_errors_without_partial_output() {
+    let root = tempfile::tempdir().unwrap();
+    let id = session();
+    for args in [vec!["status", &id, "--json"], vec!["stop", &id, "--json"]] {
+        let output = run(root.path(), &args);
+        assert_eq!(output.status.code(), Some(1), "{args:?}: {output:?}");
+        assert!(output.stdout.is_empty(), "{args:?}: {output:?}");
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        assert!(stderr.contains("session is unknown"), "{args:?}: {stderr}");
+        assert!(!stderr.contains(root.path().to_str().unwrap()));
+    }
+}
