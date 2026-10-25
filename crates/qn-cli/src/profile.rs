@@ -59,21 +59,21 @@ pub enum ProfileCommand {
 
 pub(crate) fn run(command: &ProfileCommand, output: &mut dyn Write) -> Result<(), Error> {
     let paths = qn_config::paths::QnPaths::resolve()?;
-    let registry = qn_bootstrap::profile_registry(&paths)?;
+    let control = qn_daemon::ControlPlane::new(paths.clone()).map_err(daemon_error)?;
     match command {
-        ProfileCommand::List { json } => list(&registry, *json, output)?,
+        ProfileCommand::List { json } => list(control.profiles(), *json, output)?,
         ProfileCommand::Show { id, json } => {
             let id = ProfileRef::try_from(id.as_str())?;
-            show(&registry.resolve(id)?, *json, output)?;
+            show(&control.resolve_profile(id)?, *json, output)?;
         }
         ProfileCommand::Install { id } => {
             let id = ProfileRef::try_from(id.as_str())?;
-            let summary = registry.install(id)?;
+            let summary = control.install_profile(id)?;
             writeln!(output, "installed {}", escaped_summary(&summary))?;
         }
         ProfileCommand::Rollback { id } => {
             let id = ProfileRef::try_from(id.as_str())?;
-            let summary = registry.rollback(id)?;
+            let summary = control.rollback_profile(id)?;
             writeln!(output, "rolled back to {}", escaped_summary(&summary))?;
         }
         ProfileCommand::Publish { id, version, asset } => {
@@ -82,8 +82,7 @@ pub(crate) fn run(command: &ProfileCommand, output: &mut dyn Write) -> Result<()
                 .enable_all()
                 .build()
                 .map_err(Error::Runtime)?;
-            let result =
-                runtime.block_on(qn_bootstrap::publish_profile(&paths, id, version, asset));
+            let result = runtime.block_on(control.publish_profile(id, version, asset));
             runtime.shutdown_timeout(Duration::from_millis(100));
             let summary = result?;
             writeln!(output, "published {}", escaped_summary(&summary))?;
@@ -94,7 +93,7 @@ pub(crate) fn run(command: &ProfileCommand, output: &mut dyn Write) -> Result<()
                 .enable_all()
                 .build()
                 .map_err(Error::Runtime)?;
-            let result = runtime.block_on(qn_bootstrap::validate_profile(&paths, id));
+            let result = runtime.block_on(control.validate_profile(id));
             runtime.shutdown_timeout(Duration::from_millis(100));
             let summary = result?;
             if *json {
@@ -120,7 +119,7 @@ pub(crate) fn run(command: &ProfileCommand, output: &mut dyn Write) -> Result<()
     Ok(())
 }
 
-fn list(registry: &impl ProfileRegistry, json: bool, output: &mut dyn Write) -> Result<(), Error> {
+fn list(registry: &dyn ProfileRegistry, json: bool, output: &mut dyn Write) -> Result<(), Error> {
     let summaries = registry.list()?;
     if json {
         let profiles: Vec<_> = summaries
@@ -179,6 +178,16 @@ fn show(profile: &ResolvedProfile, json: bool, output: &mut dyn Write) -> Result
     writeln!(output, "nono profile:")?;
     writeln!(output, "{}", profile.nono_profile())?;
     Ok(())
+}
+
+fn daemon_error(error: qn_daemon::Error) -> Error {
+    match error {
+        qn_daemon::Error::Setup(error) => Error::Setup(error),
+        qn_daemon::Error::Profile(error) => Error::Profile(error),
+        qn_daemon::Error::Audit(error) => Error::Audit(error),
+        qn_daemon::Error::NativeAudit(error) => Error::NativeAudit(error),
+        _ => Error::Runtime(std::io::Error::other("control-plane composition failed")),
+    }
 }
 
 fn source_label(source: ProfileSource) -> &'static str {

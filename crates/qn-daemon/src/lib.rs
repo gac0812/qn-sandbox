@@ -70,6 +70,12 @@ impl ControlPlane {
         &self.paths
     }
 
+    /// Returns the shared profile registry for presentation-only consumers.
+    #[must_use]
+    pub fn profiles(&self) -> &dyn ProfileRegistry {
+        self.profiles.as_ref()
+    }
+
     /// Lists compiled and installed profile summaries.
     ///
     /// # Errors
@@ -91,6 +97,56 @@ impl ControlPlane {
         id: qn_core::ProfileRef,
     ) -> Result<qn_core::profile::ResolvedProfile, qn_core::profile::ProfileError> {
         self.profiles.resolve(id)
+    }
+
+    /// Installs the compiled official profile version.
+    ///
+    /// # Errors
+    ///
+    /// Preserves registry validation and storage errors.
+    pub fn install_profile(
+        &self,
+        id: qn_core::ProfileRef,
+    ) -> Result<qn_core::profile::ProfileSummary, qn_core::profile::ProfileError> {
+        self.profiles.install(id)
+    }
+
+    /// Rolls back to the previous verified profile version.
+    ///
+    /// # Errors
+    ///
+    /// Preserves registry validation and storage errors.
+    pub fn rollback_profile(
+        &self,
+        id: qn_core::ProfileRef,
+    ) -> Result<qn_core::profile::ProfileSummary, qn_core::profile::ProfileError> {
+        self.profiles.rollback(id)
+    }
+
+    /// Validates the resolved profile with the pinned engine.
+    ///
+    /// # Errors
+    ///
+    /// Preserves profile and engine validation errors.
+    pub async fn validate_profile(
+        &self,
+        id: qn_core::ProfileRef,
+    ) -> Result<qn_core::profile::ProfileSummary, qn_core::profile::ProfileError> {
+        qn_bootstrap::validate_profile(&self.paths, id).await
+    }
+
+    /// Validates and publishes a local profile asset.
+    ///
+    /// # Errors
+    ///
+    /// Preserves profile validation, engine and publication errors.
+    pub async fn publish_profile(
+        &self,
+        id: qn_core::ProfileRef,
+        version: &str,
+        asset: &str,
+    ) -> Result<qn_core::profile::ProfileSummary, qn_core::profile::ProfileError> {
+        qn_bootstrap::publish_profile(&self.paths, id, version, asset).await
     }
 
     /// Inspects the managed engine without downloading or repairing it.
@@ -117,6 +173,18 @@ impl ControlPlane {
         self.engine
             .run(qn_core::setup::SetupOperation::Install)
             .await
+    }
+
+    /// Returns the shared broker audit query service for streaming consumers.
+    #[must_use]
+    pub fn audit_query(&self) -> &dyn AuditQuery {
+        self.audit.as_ref()
+    }
+
+    /// Returns the shared native audit query service for streaming consumers.
+    #[must_use]
+    pub fn native_audit_query(&self) -> &dyn NativeAuditQuery {
+        self.native_audit.as_ref()
     }
 
     /// Reads one bounded broker timeline.
