@@ -41,6 +41,10 @@ pub enum Error {
     #[error(transparent)]
     Config(#[from] qn_config::Error),
 
+    /// The requested session is not a canonical or matching identity.
+    #[error("invalid audit session; use the canonical sxn-<uuid-v7> session ID")]
+    InvalidSession,
+
     /// Structured diagnostics could not be encoded.
     #[error("failed to encode diagnostics; retry without --json")]
     Json(#[from] serde_json::Error),
@@ -166,6 +170,32 @@ fn audit_event_label(event: qn_core::audit::AuditEventKind) -> &'static str {
         qn_core::audit::AuditEventKind::Denied => "denied",
         qn_core::audit::AuditEventKind::Failed => "failed",
         qn_core::audit::AuditEventKind::ServiceClosed => "service_closed",
+    }
+}
+
+/// Selects an audit presentation after the source has validated its timeline.
+///
+/// This consumer boundary performs no source I/O. A later bootstrap composition
+/// can pass an `AuditTimeline` here without making the CLI aware of its adapter.
+///
+/// # Errors
+///
+/// Returns [`Error::Config`] when `session` is not a canonical session ID, or
+/// [`Error::Json`] / [`Error::Output`] from the selected renderer.
+pub fn render_audit_for_session(
+    session: &str,
+    timeline: &qn_core::audit::AuditTimeline,
+    json: bool,
+    output: &mut dyn Write,
+) -> Result<(), Error> {
+    let expected = qn_core::SessionId::try_from(session).map_err(|_| Error::InvalidSession)?;
+    if expected != timeline.session_id {
+        return Err(Error::InvalidSession);
+    }
+    if json {
+        render_audit_json(timeline, output)
+    } else {
+        render_audit_text(timeline, output)
     }
 }
 
@@ -389,6 +419,38 @@ mod audit_render_tests {
             assert!(text.find("event 1").unwrap() < text.find("event 2").unwrap());
             assert!(text.contains("integrity: unverified"));
         }
+    }
+
+    #[test]
+    fn consumer_rejects_invalid_or_mismatched_session_without_rendering() {
+        let timeline = timeline(JournalState::Open);
+        let mut output = Vec::new();
+        assert!(matches!(
+            super::render_audit_for_session("bad", &timeline, false, &mut output),
+            Err(super::Error::InvalidSession)
+        ));
+        assert!(output.is_empty());
+        let other = qn_core::SessionId::new().to_string();
+        assert!(matches!(
+            super::render_audit_for_session(&other, &timeline, false, &mut output),
+            Err(super::Error::InvalidSession)
+        ));
+        assert!(output.is_empty());
+    }
+
+    #[test]
+    fn consumer_selects_text_or_json_for_a_matching_session() {
+        let timeline = timeline(JournalState::Partial);
+        let session = timeline.session_id.to_string();
+        let mut text = Vec::new();
+        super::render_audit_for_session(&session, &timeline, false, &mut text).unwrap();
+        assert!(String::from_utf8(text).unwrap().contains("state: partial"));
+        let mut json = Vec::new();
+        super::render_audit_for_session(&session, &timeline, true, &mut json).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&json).unwrap()["schema_version"],
+            1
+        );
     }
 
     #[test]
