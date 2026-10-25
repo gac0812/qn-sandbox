@@ -22,7 +22,9 @@ EngineSetup（#114/#117）由实际 CLI install/doctor 消费者推动；本 PR 
 `ProfileRef`, strict `MAJOR.MINOR.PATCH` version, source, bounded nono asset text,
 allowlist hosts and one relative app state directory. Core never parses nono policy
 syntax and never accepts a credential value. Install/rollback are local registry
-operations; they do not launch an engine or widen authorization.
+operations; they do not launch an engine or widen authorization. `Engine` and
+`Validation` failures distinguish a missing/unverified managed engine from a profile
+the pinned validator rejected; neither variant echoes asset text.
 
 NativeAuditQuery (#121) keeps native network-only reports separate from broker elapsed
 clocks. Closed outcomes/optional source wall times preserve native meaning; raw targets

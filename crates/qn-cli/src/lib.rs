@@ -94,6 +94,10 @@ pub enum Error {
     /// Diagnostic output could not be written.
     #[error("failed to write diagnostic output: {0}")]
     Output(#[from] std::io::Error),
+
+    /// The local runtime required by an owned operation could not start.
+    #[error("failed to start the local operation runtime: {0}")]
+    Runtime(#[source] std::io::Error),
 }
 
 /// Executes one parsed CLI command and writes its user-facing output.

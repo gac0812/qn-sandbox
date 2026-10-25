@@ -13,10 +13,10 @@ qn-core = { path = "../qn-core", version = "0.1.0" }
 qn-infra = { path = "../qn-infra", version = "0.1.0" }
 qn-nono = { path = "../qn-nono", version = "0.1.0" }
 process-wrap = { version = "8.2.2", default-features = false, features = ["tokio1", "kill-on-drop", "process-group", "job-object"] }
+tempfile = "3"
 
 [dev-dependencies]
 serde_json = "1"
-tempfile = "3"
 tracing = "0.1"
 tokio = { version = "1", features = ["rt", "macros", "net", "io-util", "time"] }
 tokio-util = "0.7"

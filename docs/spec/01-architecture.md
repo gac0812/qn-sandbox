@@ -214,8 +214,11 @@ integrity=unverified、coverage=network_only。宿主目录可信前提、目录
 `manifest.json`，`current` 选择一个已验证版本。安装对相同字节幂等、对不同字节拒绝，
 回滚只选择上一已验证版本。core `ProfileRegistry` 仅暴露封闭的 summary/resolved DTO
 与类型化错误；`qn-bootstrap` 装配，CLI `qn profile list/show/install/rollback` 呈现。
-这些操作不启动引擎、不解析凭证、不扩大沙箱授权。资产发布不等于在线 Agent 认证 E2E、
-跨平台验收或 #93 整树清理完成。按 #14/#47 委托实施，未声明 B/C 个人审批。
+这些操作不启动引擎、不解析凭证、不扩大沙箱授权。`qn profile validate` 先校验托管引擎
+归档/二进制完整性与版本，再把已解析资产写入 `QN_HOME` 私有临时文件并执行锁版
+`nono profile validate --json --strict`；不下载/修复、不启动沙箱，成功只证明引擎接受该
+资产语法与引用。资产发布不等于在线 Agent 认证 E2E、跨平台验收或 #93 整树清理完成。
+按 #14/#47 委托实施，未声明 B/C 个人审批。
 
 ## 5. 数据流（两个代表场景）
 

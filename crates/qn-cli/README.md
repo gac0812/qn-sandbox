@@ -18,6 +18,7 @@ qn profile list [--json]
 qn profile show <id> [--json]
 qn profile install <id>
 qn profile rollback <id>
+qn profile validate <id> [--json]
 ```
 
 `qn doctor` resolves `QN_HOME` (falling back to the platform default), loads
@@ -100,6 +101,11 @@ proxy allowlist. `install` copies the compiled version into `QN_HOME/profiles` a
 it; `rollback` selects the previous verified version. JSON uses schema_version=1.
 Installed assets are checked against their SHA-256 on every resolve. These commands do not
 start an engine, resolve a credential or prove sandbox/production readiness.
+
+`qn profile validate <id>` verifies the managed engine's archive and binary integrity,
+then runs the pinned `nono profile validate --json --strict` against the resolved asset in
+a private temporary file. It never downloads or repairs. Success means the engine accepted
+the profile syntax and references; it does not start a sandbox or prove runtime behavior.
 
 ## Broker audit commands (#110 / #120)
 

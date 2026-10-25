@@ -106,6 +106,33 @@ fn it_refuses_rollback_without_an_earlier_verified_version() {
 }
 
 #[test]
+fn it_refuses_validation_without_a_verified_engine() {
+    let root = tempfile::tempdir().unwrap();
+    let output = run(root.path(), &["profile", "validate", "qn/claude-code"]);
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("qn install"), "{stderr}");
+    assert!(
+        output.stdout.is_empty(),
+        "failures must not emit partial JSON"
+    );
+    assert!(
+        !root.path().join("cache").exists(),
+        "inspection must not create an engine cache"
+    );
+}
+
+#[test]
+fn it_rejects_an_unknown_profile_before_engine_validation() {
+    let root = tempfile::tempdir().unwrap();
+    let output = run(root.path(), &["profile", "validate", "qn/unknown"]);
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("unknown profile"), "{stderr}");
+    assert!(!stderr.contains("qn install"), "{stderr}");
+}
+
+#[test]
 fn it_renders_human_readable_catalog_and_asset() {
     let root = tempfile::tempdir().unwrap();
     let list = run(root.path(), &["profile", "list"]);

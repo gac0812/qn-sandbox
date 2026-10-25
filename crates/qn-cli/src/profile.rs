@@ -7,7 +7,7 @@ use crate::Error;
 use clap::Subcommand;
 use qn_core::ProfileRef;
 use qn_core::profile::{ProfileRegistry, ProfileSource, ProfileSummary, ResolvedProfile};
-use std::io::Write;
+use std::{io::Write, time::Duration};
 
 /// Profile catalog and host-registry operations.
 #[derive(Debug, Subcommand)]
@@ -36,6 +36,14 @@ pub enum ProfileCommand {
         /// Canonical `namespace/name` profile identity.
         id: String,
     },
+    /// Validate the resolved asset with the pinned engine's strict validator.
+    Validate {
+        /// Canonical `namespace/name` profile identity.
+        id: String,
+        /// Emit a versioned machine-readable validation result.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 pub(crate) fn run(command: &ProfileCommand, output: &mut dyn Write) -> Result<(), Error> {
@@ -56,6 +64,33 @@ pub(crate) fn run(command: &ProfileCommand, output: &mut dyn Write) -> Result<()
             let id = ProfileRef::try_from(id.as_str())?;
             let summary = registry.rollback(id)?;
             writeln!(output, "rolled back to {}", escaped_summary(&summary))?;
+        }
+        ProfileCommand::Validate { id, json } => {
+            let id = ProfileRef::try_from(id.as_str())?;
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(Error::Runtime)?;
+            let result = runtime.block_on(qn_bootstrap::validate_profile(&paths, id));
+            runtime.shutdown_timeout(Duration::from_millis(100));
+            let summary = result?;
+            if *json {
+                let encoded = serde_json::to_string(&serde_json::json!({
+                    "schema_version": 1,
+                    "validated": {
+                        "id": summary.id().as_str(),
+                        "version": summary.version().as_str(),
+                        "source": source_label(summary.source()),
+                    }
+                }))?;
+                writeln!(output, "{encoded}")?;
+            } else {
+                writeln!(
+                    output,
+                    "validated {} by the pinned engine",
+                    escaped_summary(&summary)
+                )?;
+            }
         }
     }
     output.flush()?;
