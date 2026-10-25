@@ -43,6 +43,7 @@ revoke 后出站 → 立即断供；托管配置写明文 → 拒绝写入。任
 
 | 门 | 命令 | 时机 |
 | --- | --- | --- |
+| architecture | `python3 scripts/check_architecture.py` + 检查器 unittest | 每 PR；声明依赖分层（#132） |
 | fmt | `cargo fmt --all -- --check` | 每 PR |
 | clippy | `cargo clippy --workspace --all-targets -- -D warnings` | 每 PR |
 | test | `cargo test --workspace`（平台矩阵） | 每 PR |
