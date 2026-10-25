@@ -8,6 +8,11 @@ use std::io;
 /// Failures while installing, probing, or parsing the locked `nono` release.
 #[derive(Debug, thiserror::Error)]
 pub enum NonoError {
+    /// Cached archive or installed executable is missing, nonregular or differs from the pin.
+    #[error(
+        "managed engine integrity is unavailable; run 'qn install' to restore the pinned binary"
+    )]
+    InstallationIntegrity,
     /// This qn ID already has a launch reservation, including a failed attempt.
     #[error("session already reserved; use a new session ID and retain existing evidence")]
     SessionReserved,
