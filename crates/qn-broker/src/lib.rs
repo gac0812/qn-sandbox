@@ -24,4 +24,5 @@ mod grants;
 pub use grants::{CaptureScope, GrantError, GrantRegistry};
 
 pub mod capture;
+pub mod identity;
 pub mod provider;
