@@ -1,0 +1,14 @@
+{
+  "name": "qn-sandbox-intro-film",
+  "private": true,
+  "description": "qn sandbox product film, rendered from code (render(t) pages + headless Chromium + ffmpeg)",
+  "type": "module",
+  "scripts": {
+    "assets": "sh fetch-assets.sh",
+    "build": "sh build.sh",
+    "storyboard": "node tools/frames.mjs film/index.html out/sb && python3 tools/storyboard.py out/sb out/storyboard.jpg"
+  },
+  "dependencies": {
+    "three": "0.170.0"
+  }
+}

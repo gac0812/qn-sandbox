@@ -1,0 +1,99 @@
+1
+00:00:00,400 --> 00:00:06,222
+AI 助手越来越能干：改代码、跑命令、上网查资料。
+AI agents can do more and more: edit code, run commands, browse the web.
+
+2
+00:00:06,242 --> 00:00:15,842
+可它和你的 SSH 密钥、云账号住在同一台电脑上。网页里藏一句坏指令，钥匙就可能被带走。
+But it shares a computer with your SSH keys and cloud accounts. One hidden instruction on a web page, and the keys could walk away.
+
+3
+00:00:16,842 --> 00:00:24,220
+qn sandbox 给它一间自己的屋子。打开终端，在项目目录里敲一行命令。
+qn sandbox gives it a room of its own. Open a terminal and type one command in your project.
+
+4
+00:00:24,770 --> 00:00:31,259
+回车。不用装虚拟机，也不用懂 Landlock 和 Seatbelt，屋子已经搭好了。
+Enter. No virtual machine, no Landlock or Seatbelt know-how: the room is ready.
+
+5
+00:00:31,559 --> 00:00:38,311
+在屋里，它照常干活：读项目、改代码、跑测试，一点不耽误。
+Inside, it works as usual: reads the project, edits code, runs tests.
+
+6
+00:00:38,811 --> 00:00:47,522
+真正的钥匙一直挂在屋外。它手里只有一张临时句柄，上面没有任何真实密钥。
+The real key always hangs outside. It only holds a temporary handle, with no real secret on it.
+
+7
+00:00:47,922 --> 00:00:54,633
+要推代码时，把句柄递出去，由宿主这边的代理替它开门。
+To push code, it hands the handle out, and a proxy on the host opens the door for it.
+
+8
+00:00:54,883 --> 00:00:58,261
+可要是，它被骗了呢？
+But what if it gets tricked?
+
+9
+00:01:00,261 --> 00:01:10,083
+别担心。文件和网络默认关着门，越过配置档的动作当场拦下，还会记进审计，你随时看得到。
+Don't worry. Files and network are closed by default; anything beyond the profile is stopped on the spot and written to an audit log you can always see.
+
+10
+00:01:10,583 --> 00:01:18,183
+接 MCP 服务也一样：配置里只写句柄，密钥由宿主侧的网关代为应答。
+MCP servers work the same way: the config holds only a handle; the host-side gateway answers with the secret.
+
+11
+00:01:18,683 --> 00:01:26,505
+这间屋子是怎么搭起来的？最底层，是操作系统内核自带的隔离能力；
+How is the room built? At the bottom: isolation built into the operating system kernel;
+
+12
+00:01:26,525 --> 00:01:31,459
+往上，开源安全内核 nono 把这堵墙砌牢；
+above it, the open-source security core nono makes that wall solid;
+
+13
+00:01:31,479 --> 00:01:36,856
+再往上，凭证代理和 MCP 网关替 Agent 保管钥匙；
+then the credential broker and MCP gateway keep the keys for the agent;
+
+14
+00:01:36,876 --> 00:01:42,254
+最上面，是你每天用的命令行和桌面面板。
+and on top, the command line and desktop panel you use every day.
+
+15
+00:01:42,654 --> 00:01:48,792
+打开面板：会话、配置档、权限、审计，一眼就能看清。
+Open the panel: sessions, profiles, permissions, audit, all at a glance.
+
+16
+00:01:48,992 --> 00:01:52,148
+想随时收回权限？
+Want to take access back?
+
+17
+00:01:52,148 --> 00:01:56,192
+点一下撤销，句柄立刻作废。
+One click on revoke, and the handle stops working at once.
+
+18
+00:01:58,248 --> 00:02:06,025
+Mac 上原生运行；Windows 上它会自动备好 WSL2，用起来一模一样。
+Native on Mac; on Windows it sets up WSL2 for you, and it feels exactly the same.
+
+19
+00:02:06,045 --> 00:02:11,433
+Codex 也能住进隔壁；DeepSeek 的 dsh 正在路上。
+Codex can move in next door; DeepSeek's dsh is on its way.
+
+20
+00:02:13,333 --> 00:02:20,569
+让 AI 放手去干，钥匙始终在你手里。qn sandbox，关得住，也待得舒服。
+Let AI get on with the work; the keys stay in your hands. qn sandbox: safe by default, comfortable by design.

@@ -1,0 +1,119 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>html,body{margin:0;background:#000}canvas{position:absolute;left:0;top:0;display:block}</style>
+<canvas id="c"></canvas><canvas id="gl"></canvas><canvas id="top"></canvas>
+<script type="importmap">{"imports":{"three":"/node_modules/three/build/three.module.js","three/addons/":"/node_modules/three/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import { rr, loadFonts, drawClawd, CLAY, CLAY_DARK, CLAY_LIGHT } from '/lib/lib.js';
+import { CODEX, CODEX_PAL, DSH, DSH_PAL, CLAWD_GRID, CLAWD_PAL, drawSprite } from '/lib/sprites.js';
+import { toonKit, voxelFigure, clawdEyes } from '/lib/voxel.js';
+
+const SW = 1920, SH = 1200;
+const cv = document.getElementById('c'); cv.width = SW; cv.height = SH; const ctx = cv.getContext('2d');
+const tp = document.getElementById('top'); tp.width = SW; tp.height = SH; const t2 = tp.getContext('2d');
+const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('gl'), alpha: true, antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1); renderer.setSize(SW, SH, false); renderer.setClearColor(0, 0);
+const scene = new THREE.Scene();
+const cam = new THREE.OrthographicCamera(0, SW, 0, -SH, -2000, 2000);
+scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(-1, 2, 2.2); scene.add(sun);
+const kit = toonKit();
+function place(fig, x, y, s = 1) { fig.position.set(x, -y, 0); fig.rotation.set(0.18, -0.55, 0); fig.scale.setScalar(s); scene.add(fig); }
+
+const INK = '#2b2420', SUB = '#7b6a5f';
+function card(x, y, w, h) {
+  ctx.save(); ctx.shadowColor = 'rgba(60,30,20,0.12)'; ctx.shadowBlur = 24; ctx.shadowOffsetY = 8;
+  ctx.fillStyle = '#FFFBF6'; rr(ctx, x, y, w, h, 22); ctx.fill(); ctx.restore();
+}
+function label(t, x, y, size = 30, w = 700, col = INK, fam = '"Noto Sans SC"') { ctx.fillStyle = col; ctx.font = `${w} ${size}px ${fam}`; ctx.fillText(t, x, y); }
+function chip(t, x, y, bg, fg) {
+  ctx.font = '600 15px "JetBrains Mono"'; const w = ctx.measureText(t).width + 22;
+  ctx.fillStyle = bg; rr(ctx, x, y, w, 28, 14); ctx.fill(); ctx.fillStyle = fg; ctx.fillText(t, x + 11, y + 19); return w;
+}
+
+window.render = async () => {
+  ctx.fillStyle = '#F4EEE8'; ctx.fillRect(0, 0, SW, SH);
+  label('角色设定 · CHARACTERS', 50, 62, 36);
+  label('像素 2D（界面里）  ⇄  描边体素 3D（玻璃屋里），同一套像素网格', 580, 60, 20, 400, SUB);
+
+  // ---- three agent cards ----
+  const cards = [
+    { x: 40, name: 'Clawd', role: '主角 · Claude Code', chip: 'qn/claude-code', note: '18×10 陶土橙小怪兽。好奇、乐观、动作弹。' },
+    { x: 660, name: 'Codex', role: '邻居 · 原创形象', chip: 'qn/codex', note: '石板灰显示器小机器人，薄荷色提示符脸。沉稳、守规矩。' },
+    { x: 1280, name: 'dsh', role: 'DeepSeek · 蓝鲸概念（原创）', chip: '规划中', note: '圆滚滚的蓝色像素鲸鱼。片中只出场打招呼，不演示功能。' },
+  ];
+  for (const c of cards) {
+    card(c.x, 100, 600, 520);
+    label(c.name, c.x + 30, 160, 38, 700, INK, 'Fredoka');
+    label(c.role, c.x + 30, 196, 18, 500, SUB);
+    chip(c.chip, c.x + 30, 214, c.chip === '规划中' ? '#FFE9C2' : '#EFE5DC', c.chip === '规划中' ? '#9A6A1A' : '#5b4a40');
+    ctx.fillStyle = '#F6EFE8'; rr(ctx, c.x + 24, 262, 270, 270, 16); ctx.fill(); rr(ctx, c.x + 306, 262, 270, 270, 16); ctx.fill();
+    label('2D 像素', c.x + 36, 290, 14, 600, SUB); label('3D 体素', c.x + 318, 290, 14, 600, SUB);
+    label(c.note, c.x + 30, 575, 17, 400, '#5a4d45');
+  }
+  drawClawd(ctx, 40 + 159, 470, 12, { eyes: 'open' });
+  drawSprite(ctx, CODEX, CODEX_PAL, 660 + 159, 480, 12);
+  drawSprite(ctx, DSH, DSH_PAL, 1280 + 159, 470, 10.5);
+  // dsh's "planned" sign (2D)
+  ctx.save(); ctx.translate(1280 + 180, 500); ctx.rotate(-0.05);
+  ctx.fillStyle = '#FFF3D6'; rr(ctx, -10, 0, 120, 34, 8); ctx.fill(); ctx.strokeStyle = '#C79A4A'; ctx.lineWidth = 2; rr(ctx, -10, 0, 120, 34, 8); ctx.stroke();
+  ctx.fillStyle = '#7a5410'; ctx.font = '700 17px "Noto Sans SC"'; ctx.fillText('规划中', 22, 23); ctx.restore();
+
+  // 3D versions
+  const clawd3 = voxelFigure(kit, CLAWD_GRID, CLAWD_PAL, { main: '#', skip: ['e'], vx: 11 });
+  clawdEyes(kit, clawd3).set('open');
+  place(clawd3, 40 + 441, 470);
+  place(voxelFigure(kit, CODEX, CODEX_PAL, { main: 's', vx: 11 }), 660 + 441, 485);
+  place(voxelFigure(kit, DSH, DSH_PAL, { main: 'w', vx: 9.5, depth: 6 }), 1280 + 441, 470);
+
+  // ---- expressions ----
+  card(40, 650, 900, 300);
+  label('Clawd 表情（眼睛演戏）', 70, 700, 24);
+  const ex = [['open', '平常', 'open'], ['happy', '开心', 'happy'], ['wide', '惊讶', 'wide'], ['look-up', '好奇', 'look-up'], ['shut', '犯困', 'shut']];
+  ex.forEach(([e, name], i) => {
+    const x = 125 + i * 172;
+    drawClawd(ctx, x, 880, 7.5, { eyes: e });
+    label(name, x - 18, 925, 18, 600, SUB);
+  });
+  t2.clearRect(0, 0, SW, SH);
+  // little acting marks on top
+  t2.fillStyle = '#F2B84B'; for (const [dx, dy] of [[0, -2], [0, 2], [-2, 0], [2, 0], [0, 0]]) t2.fillRect(125 + 172 + 70 + dx * 4, 790 + dy * 4, 4, 4);
+  t2.fillStyle = INK; t2.font = '800 30px Fredoka'; t2.fillText('!', 125 + 344 + 62, 800);
+  t2.fillText('?', 125 + 516 + 62, 800);
+  t2.font = '700 22px Fredoka'; t2.fillText('z', 125 + 688 + 66, 808); t2.font = '700 16px Fredoka'; t2.fillText('z', 125 + 688 + 84, 790);
+
+  // ---- key poses ----
+  card(980, 650, 900, 300);
+  label('关键动作：预备 → 动作 → 回弹', 1010, 700, 24);
+  const poses = [['预备蹲', 0.72, 0], ['起跳拉伸', 1.32, -50], ['落地压扁', 0.66, 0], ['回弹', 1.08, 0]];
+  poses.forEach(([name, sq, lift], i) => {
+    const x = 1090 + i * 215;
+    drawClawd(ctx, x, 880 + lift, 7, { squash: sq, eyes: i === 1 ? 'wide' : i === 2 ? 'shut' : 'open', shadow: lift === 0 });
+    if (lift) { ctx.fillStyle = 'rgba(60,30,20,0.12)'; ctx.beginPath(); ctx.ellipse(x, 882, 40, 7, 0, 0, 7); ctx.fill(); }
+    if (i === 2) { ctx.fillStyle = '#D9C4B2'; for (const dx of [-80, -66, 66, 80]) ctx.fillRect(x + dx, 870 - Math.abs(dx) / 8, 7, 7); }
+    label(name, x - 32, 925, 18, 600, SUB);
+  });
+  ctx.strokeStyle = '#d6c6b8'; ctx.setLineDash([4, 8]); ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(1120, 860); ctx.quadraticCurveTo(1200, 720, 1290, 790); ctx.quadraticCurveTo(1350, 740, 1500, 860); ctx.stroke(); ctx.setLineDash([]);
+
+  // ---- palette + rules ----
+  card(40, 980, 1840, 190);
+  label('色板', 70, 1030, 22);
+  const sw = [[CLAY, 'Clawd 陶土橙'], [CLAY_LIGHT, '高光'], [CLAY_DARK, '暗部'], [CODEX_PAL.s, 'Codex 石板'], [CODEX_PAL.m, '薄荷'], [DSH_PAL.w, 'dsh 蓝'], [DSH_PAL.l, '鲸肚白'], ['#F2B84B', '钥匙金'], ['#FFF6EC', '奶油底'], ['#2a1a14', '描边墨']];
+  sw.forEach(([c, n], i) => {
+    const x = 70 + i * 118;
+    ctx.fillStyle = c; rr(ctx, x, 1050, 96, 60, 12); ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.08)'; ctx.lineWidth = 1; rr(ctx, x, 1050, 96, 60, 12); ctx.stroke();
+    label(n, x, 1135, 14, 500, SUB);
+  });
+  label('表演规则', 1290, 1030, 22);
+  const rules = ['· 像素位置吸附到像素网格，动作逐帧有“台阶感”', '· 跳：先蹲 → 腾空拉长 → 落地压扁 + 小灰尘 → 回弹', '· 眼睛看向正在发生的事；每 3–5 秒不规则眨眼', '· 3D 逐帧动，2D 特效一拍两帧（平行宇宙节奏）'];
+  rules.forEach((r, i) => label(r, 1290, 1065 + i * 27, 16, 400, '#5a4d45'));
+
+  renderer.render(scene, cam);
+  t2.fillStyle = 'rgba(0,0,0,0.004)'; t2.fillRect(0, 0, 1, 1);
+};
+
+try { await loadFonts(); window.READY = true; } catch (e) { window.FAIL = String(e); }
+</script>

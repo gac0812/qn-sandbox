@@ -1,0 +1,170 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>html,body{margin:0;background:#000}canvas{display:block}</style>
+<canvas id="c"></canvas>
+<script type="module">
+import { W, H, rr, loadFonts, setupCanvas, drawClawd, menuBar, dock, trafficLights, key, shield, CLAY } from '/lib/lib.js';
+
+const ctx = setupCanvas();
+
+function wallpaper() {
+  const g = ctx.createLinearGradient(0, 0, W, H);
+  g.addColorStop(0, '#FBE3D2'); g.addColorStop(0.55, '#F3D3D8'); g.addColorStop(1, '#D9D3F0');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  const blobs = [[300, 900, 520, 'rgba(255,190,150,0.55)'], [1650, 250, 600, 'rgba(200,190,255,0.5)'], [1200, 1000, 420, 'rgba(255,220,200,0.6)']];
+  for (const [x, y, r, c] of blobs) {
+    const rg = ctx.createRadialGradient(x, y, 0, x, y, r);
+    rg.addColorStop(0, c); rg.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = rg; ctx.fillRect(0, 0, W, H);
+  }
+}
+
+function sandboxWindow() {
+  const x = 230, y = 120, w = 1010, h = 720;
+  // glass halo = the sandbox boundary
+  ctx.save();
+  ctx.shadowColor = 'rgba(217,119,87,0.35)'; ctx.shadowBlur = 60;
+  ctx.strokeStyle = 'rgba(217,119,87,0.55)'; ctx.lineWidth = 3;
+  rr(ctx, x - 14, y - 14, w + 28, h + 28, 30); ctx.stroke();
+  ctx.restore();
+  ctx.save();
+  ctx.setLineDash([2, 10]); ctx.lineCap = 'round'; ctx.strokeStyle = 'rgba(217,119,87,0.8)'; ctx.lineWidth = 3;
+  rr(ctx, x - 14, y - 14, w + 28, h + 28, 30); ctx.stroke();
+  ctx.restore();
+  // window
+  ctx.save();
+  ctx.shadowColor = 'rgba(70,35,20,0.22)'; ctx.shadowBlur = 50; ctx.shadowOffsetY = 20;
+  ctx.fillStyle = '#FFFBF6'; rr(ctx, x, y, w, h, 18); ctx.fill();
+  ctx.restore();
+  ctx.save(); rr(ctx, x, y, w, h, 18); ctx.clip();
+  ctx.fillStyle = '#F4ECE3'; ctx.fillRect(x, y, w, 52);
+  trafficLights(ctx, x + 26, y + 26);
+  ctx.fillStyle = '#5b4a40'; ctx.font = '500 17px "Noto Sans SC"'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('claude — 沙箱中 · qn/claude-code', x + w / 2, y + 27);
+  // status chip
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#E3F2E9'; rr(ctx, x + w - 190, y + 13, 170, 28, 14); ctx.fill();
+  shield(ctx, x + w - 170, y + 27, 8, '#3E9B6F');
+  ctx.fillStyle = '#2f7a55'; ctx.font = '600 14px "Noto Sans SC"'; ctx.fillText('默认拒绝 · 已隔离', x + w - 154, y + 28);
+  // terminal lines
+  ctx.font = '500 21px "JetBrains Mono"'; ctx.textBaseline = 'alphabetic';
+  const tx = x + 40; let ty = y + 105;
+  ctx.fillStyle = '#9b8778'; ctx.fillText('~/my-app', tx, ty);
+  ctx.fillStyle = CLAY; ctx.fillText('❯', tx + 118, ty);
+  ctx.fillStyle = '#3a2e27'; ctx.fillText('qn run --profile qn/claude-code -- claude', tx + 146, ty);
+  ty += 40; ctx.fillStyle = '#3E9B6F'; ctx.fillText('✓', tx, ty); ctx.fillStyle = '#6d5d52'; ctx.fillText('会话已启动  凭证：0 个明文 · 1 个句柄', tx + 30, ty);
+  // room floor
+  const fy = y + h - 150;
+  const fg = ctx.createLinearGradient(0, fy, 0, y + h);
+  fg.addColorStop(0, '#F6E6D6'); fg.addColorStop(1, '#EED8C3');
+  ctx.fillStyle = fg; ctx.fillRect(x, fy, w, 150);
+  // back wall stripe
+  ctx.fillStyle = 'rgba(217,119,87,0.06)';
+  for (let i = 0; i < 14; i++) ctx.fillRect(x + i * 74, y + 180, 37, fy - y - 180);
+  // window to "outside" (soft)
+  // shelf with project folder
+  ctx.fillStyle = '#D9BFA6'; rr(ctx, x + 70, y + 330, 260, 12, 6); ctx.fill();
+  folder(x + 95, y + 268, '#7FA7E0', 'my-app/');
+  ctx.fillStyle = '#E9A87F'; rr(ctx, x + 240, y + 280, 22, 50, 4); ctx.fill();
+  ctx.fillStyle = '#9DC9A8'; rr(ctx, x + 266, y + 290, 22, 40, 4); ctx.fill();
+  // lamp
+  ctx.fillStyle = '#C9A88E'; ctx.fillRect(x + 836, fy - 210, 8, 210);
+  ctx.fillStyle = '#F7C873'; ctx.beginPath(); ctx.moveTo(x + 790, fy - 210); ctx.lineTo(x + 890, fy - 210); ctx.lineTo(x + 868, fy - 270); ctx.lineTo(x + 812, fy - 270); ctx.closePath(); ctx.fill();
+  const lg = ctx.createRadialGradient(x + 840, fy - 190, 10, x + 840, fy - 120, 320);
+  lg.addColorStop(0, 'rgba(255,214,140,0.45)'); lg.addColorStop(1, 'rgba(255,214,140,0)');
+  ctx.fillStyle = lg; ctx.fillRect(x, y, w, h);
+  // rug + cushion
+  ctx.fillStyle = '#E7B9A2'; ctx.beginPath(); ctx.ellipse(x + 520, fy + 80, 280, 46, 0, 0, 7); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 3; ctx.setLineDash([10, 8]);
+  ctx.beginPath(); ctx.ellipse(x + 520, fy + 80, 250, 36, 0, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = '#A9B8E8'; rr(ctx, x + 640, fy + 30, 150, 54, 26); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.35)'; rr(ctx, x + 655, fy + 36, 120, 16, 8); ctx.fill();
+  // mail slot in the right wall
+  ctx.fillStyle = '#3a2e27'; rr(ctx, x + w - 16, y + 360, 16, 90, 4); ctx.fill();
+  ctx.restore();
+  return { x, y, w, h, fy };
+}
+
+function folder(x, y, col, label) {
+  ctx.fillStyle = col; rr(ctx, x, y + 8, 120, 62, 8); ctx.fill();
+  rr(ctx, x, y, 50, 18, 6); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.25)'; rr(ctx, x, y + 22, 120, 48, 8); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.font = '600 15px "JetBrains Mono"'; ctx.fillText(label, x + 14, y + 54);
+}
+
+function tag(x, y, rot) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+  // pixel paper tag (part of Clawd's pixel world)
+  const p = 5;
+  ctx.fillStyle = '#FFF6D9'; ctx.fillRect(0, 0, 44 * p, 9 * p);
+  ctx.fillStyle = '#E6CF8F'; ctx.fillRect(0, 8 * p, 44 * p, p);
+  ctx.fillStyle = '#3a2e27'; ctx.fillRect(p, p * 3.5, p * 2, p * 2);
+  ctx.font = '700 22px "JetBrains Mono"'; ctx.textBaseline = 'middle';
+  ctx.fillText('qn://handle/github', p * 4.5, 4.6 * p);
+  ctx.restore();
+}
+
+function hostCard() {
+  const x = 1340, y = 300, w = 440, h = 400;
+  ctx.save();
+  ctx.shadowColor = 'rgba(70,35,20,0.18)'; ctx.shadowBlur = 40; ctx.shadowOffsetY = 14;
+  ctx.fillStyle = 'rgba(255,255,255,0.72)'; rr(ctx, x, y, w, h, 24); ctx.fill();
+  ctx.restore();
+  ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1.5; rr(ctx, x + 0.5, y + 0.5, w - 1, h - 1, 24); ctx.stroke();
+  ctx.fillStyle = '#9b8778'; ctx.font = '600 14px "Noto Sans SC"'; ctx.fillText('HOST · 宿主侧', x + 30, y + 42);
+  ctx.fillStyle = '#3a2e27'; ctx.font = '700 28px "Noto Sans SC"'; ctx.fillText('真实凭证', x + 30, y + 84);
+  // hook
+  ctx.strokeStyle = '#8c7a6d'; ctx.lineWidth = 7; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(x + 200, y + 120); ctx.lineTo(x + 200, y + 150); ctx.arc(x + 214, y + 150, 14, Math.PI, 0, true); ctx.stroke();
+  ctx.fillStyle = '#8c7a6d'; rr(ctx, x + 170, y + 110, 60, 14, 7); ctx.fill();
+  key(ctx, x + 228, y + 200, 34, { rot: Math.PI / 2 + 0.12 });
+  ctx.fillStyle = '#6d5d52'; ctx.font = '500 18px "Noto Sans SC"';
+  ctx.fillText('github · 只在宿主侧使用', x + 30, y + 360);
+  ctx.fillStyle = '#B9822A'; ctx.font = '500 15px "JetBrains Mono"';
+  ctx.fillText('never enters the sandbox', x + 30, y + 330);
+}
+
+function notification() {
+  const w = 430, h = 92, x = W - w - 24, y = 54;
+  ctx.save();
+  ctx.shadowColor = 'rgba(40,20,10,0.18)'; ctx.shadowBlur = 30; ctx.shadowOffsetY = 10;
+  ctx.fillStyle = 'rgba(255,255,255,0.86)'; rr(ctx, x, y, w, h, 18); ctx.fill();
+  ctx.restore();
+  ctx.fillStyle = '#E8584A'; rr(ctx, x + 18, y + 20, 52, 52, 13); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.font = '800 30px Fredoka'; ctx.textAlign = 'center'; ctx.fillText('!', x + 44, y + 57); ctx.textAlign = 'left';
+  ctx.fillStyle = '#3a2e27'; ctx.font = '700 18px "Noto Sans SC"'; ctx.fillText('已拦截：读取 ~/.ssh', x + 88, y + 40);
+  ctx.fillStyle = '#7d6c60'; ctx.font = '400 15px "Noto Sans SC"'; ctx.fillText('qn/claude-code · 已写入审计记录', x + 88, y + 68);
+}
+
+function caption(text, en) {
+  ctx.font = '600 32px "Noto Sans SC"';
+  const tw = ctx.measureText(text).width;
+  const w = tw + 80, h = 82, x = (W - w) / 2, y = H - 210;
+  ctx.fillStyle = 'rgba(40,28,22,0.72)'; rr(ctx, x, y, w, h, 41); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.fillText(text, W / 2, y + 44);
+  ctx.font = '500 15px Fredoka'; ctx.fillStyle = 'rgba(255,255,255,0.65)'; ctx.fillText(en, W / 2, y + 68);
+  ctx.textAlign = 'left';
+}
+
+window.render = (t) => {
+  ctx.textBaseline = 'alphabetic';
+  wallpaper();
+  menuBar(ctx, {});
+  const win = sandboxWindow();
+  // dotted relay line slot → host
+  ctx.save(); ctx.setLineDash([3, 12]); ctx.lineCap = 'round'; ctx.strokeStyle = 'rgba(185,130,42,0.7)'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(win.x + win.w + 20, win.y + 405); ctx.bezierCurveTo(1290, 520, 1300, 520, 1340, 500); ctx.stroke(); ctx.restore();
+  hostCard();
+  // Clawd at 9px per pixel, standing on the rug, holding the handle tag
+  drawClawd(ctx, win.x + 470, win.fy + 78, 9, { eyes: 'look-r' });
+  tag(win.x + 560, win.fy - 20, -0.08);
+  // pixel sparkle
+  ctx.fillStyle = '#F2B84B'; for (const [dx, dy] of [[0, -2], [0, 2], [-2, 0], [2, 0], [0, 0]]) ctx.fillRect(win.x + 650 + dx * 5, win.fy - 60 + dy * 5, 5, 5);
+  notification();
+  dock(ctx, { colors: [['#F7B58F', '#E07B57'], ['#A9C4F5', '#6F93E0'], ['#B8E0C5', '#6FB78A'], ['#F5D98F', '#E3B447'], ['#D7C6F5', '#9F86E0'], ['#3a2e27', '#1f1814']] });
+  caption('真实凭证留在宿主侧，Agent 只拿到一张临时句柄。', 'Real credentials stay on the host. The agent holds a handle.');
+  ctx.fillStyle = 'rgba(0,0,0,0.004)'; ctx.fillRect(0, 0, 1, 1);
+};
+
+try { await loadFonts(); window.READY = true; } catch (e) { window.FAIL = String(e); }
+</script>
