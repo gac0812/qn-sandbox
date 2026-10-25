@@ -53,3 +53,17 @@ impl From<&EngineInstallation> for EngineReport {
         }
     }
 }
+
+pub(crate) fn render_json(
+    installation: &EngineInstallation,
+    output: &mut dyn Write,
+) -> Result<(), Error> {
+    let report = serde_json::json!({
+        "schema_version": 1,
+        "engine": EngineReport::from(installation),
+        "installation": "verified",
+        "runtime_checks": "not_checked",
+    });
+    writeln!(output, "{}", serde_json::to_string(&report)?)?;
+    Ok(())
+}

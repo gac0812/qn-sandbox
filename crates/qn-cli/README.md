@@ -12,6 +12,7 @@ through `qn-bootstrap`.
 qn --version
 qn --help
 qn install
+qn install --json
 qn doctor
 qn doctor --json
 qn doctor --config-only
@@ -44,7 +45,9 @@ run the explicit mutation command, qn install. The managed root is
 QN_HOME/cache/nono/<host-target>/<version>. No executable is discovered through PATH.
 
 qn install reuses the existing pinned downloader and repair path, then probes the
-version. Both commands await their owned blocking operation. Success verifies the
+version. `qn install --json` emits schema_version=1 with the verified engine
+name/version/binary and `runtime_checks: not_checked`; installation failures remain
+redacted text errors and emit no partial JSON. Both commands await their owned blocking operation. Success verifies the
 binary only, not sandbox isolation, credentials, full process cleanup or WSL readiness.
 Native Windows setup remains unsupported until the WSL installation route is connected.
 

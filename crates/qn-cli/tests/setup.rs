@@ -159,3 +159,14 @@ fn it_emits_no_partial_json_when_engine_inspection_fails() {
     assert!(output.stdout.is_empty());
     assert!(!root.path().join("cache").exists());
 }
+
+#[test]
+fn it_advertises_install_json() {
+    let output = Command::new(env!("CARGO_BIN_EXE_qn"))
+        .args(["install", "--help"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert!(output.stderr.is_empty());
+    assert!(String::from_utf8(output.stdout).unwrap().contains("--json"));
+}

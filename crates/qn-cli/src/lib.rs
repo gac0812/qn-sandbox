@@ -30,7 +30,11 @@ pub struct Cli {
 #[derive(Debug, Subcommand)]
 pub enum Command {
     /// Install or repair the pinned engine, then verify its version.
-    Install,
+    Install {
+        /// Emit a versioned machine-readable installation report.
+        #[arg(long)]
+        json: bool,
+    },
     /// Read bounded broker audit evidence without changing authorization.
     Audit {
         /// Query operation for one canonical session.
@@ -148,10 +152,14 @@ pub enum Error {
 /// writing diagnostics fails.
 pub fn run(cli: &Cli, output: &mut dyn Write) -> Result<(), Error> {
     match &cli.command {
-        Command::Install => {
+        Command::Install { json } => {
             let paths = QnPaths::resolve()?;
             let installation = setup::inspect(qn_core::setup::SetupOperation::Install, &paths)?;
-            setup::render(&installation, output)
+            if *json {
+                setup::render_json(&installation, output)
+            } else {
+                setup::render(&installation, output)
+            }
         }
         Command::Audit { command } => audit::run(command, output),
         Command::Doctor { json, config_only } => doctor(output, *json, *config_only),
