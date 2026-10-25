@@ -820,3 +820,122 @@ mod client_tests {
         assert!(model.pending.is_none());
     }
 }
+
+/// Permission state displayed by the Permissions view.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum PermissionState {
+    /// No grant is currently active.
+    None,
+    /// A host-mediated grant is active for one session and scope label.
+    Granted {
+        /// Canonical session reference.
+        session: String,
+        /// Non-secret permission scope label.
+        scope: String,
+    },
+    /// A revoke request has been accepted and is awaiting confirmation.
+    Revoking {
+        /// Canonical session reference.
+        session: String,
+    },
+    /// The broker/gateway capability is unavailable in this product phase.
+    Unavailable {
+        /// Safe unavailable reason.
+        reason: UnavailableReason,
+    },
+}
+
+/// Safe permission view model with no credential values.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct PermissionModel {
+    /// Current permission state.
+    pub state: PermissionState,
+    /// Whether a user can request a grant from this view.
+    pub can_grant: bool,
+    /// Whether a user can request revoke from this view.
+    pub can_revoke: bool,
+}
+
+impl PermissionModel {
+    /// Constructs an unavailable permission model without implying success.
+    #[must_use]
+    pub fn unavailable(reason: UnavailableReason) -> Self {
+        Self {
+            state: PermissionState::Unavailable { reason },
+            can_grant: false,
+            can_revoke: false,
+        }
+    }
+
+    /// Constructs the empty state before a grant is issued.
+    #[must_use]
+    pub fn empty() -> Self {
+        Self {
+            state: PermissionState::None,
+            can_grant: true,
+            can_revoke: false,
+        }
+    }
+
+    /// Applies a host-mediated grant result without accepting credential data.
+    #[must_use]
+    pub fn granted(session: String, scope: String) -> Self {
+        Self {
+            state: PermissionState::Granted { session, scope },
+            can_grant: false,
+            can_revoke: true,
+        }
+    }
+
+    /// Begins a revoke transition for the currently granted session.
+    ///
+    /// Returns `None` when the current state is not an active grant.
+    #[must_use]
+    pub fn begin_revoke(&self) -> Option<Self> {
+        let PermissionState::Granted { session, .. } = &self.state else {
+            return None;
+        };
+        Some(Self {
+            state: PermissionState::Revoking {
+                session: session.clone(),
+            },
+            can_grant: false,
+            can_revoke: false,
+        })
+    }
+
+    /// Completes a revoke transition as an empty state.
+    #[must_use]
+    pub fn complete_revoke(&self) -> Option<Self> {
+        matches!(self.state, PermissionState::Revoking { .. }).then(Self::empty)
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod permission_tests {
+    use super::*;
+
+    #[test]
+    fn permission_model_never_contains_credential_values() {
+        let model = PermissionModel::granted("sxn-demo".into(), "anthropic-api".into());
+        let encoded = serde_json::to_string(&model).unwrap();
+        assert!(encoded.contains("sxn-demo"));
+        assert!(encoded.contains("anthropic-api"));
+        assert!(!encoded.contains("secret"));
+        assert!(!encoded.contains("token"));
+    }
+
+    #[test]
+    fn grant_revoke_state_machine_is_explicit() {
+        let empty = PermissionModel::empty();
+        assert!(empty.begin_revoke().is_none());
+        let granted = PermissionModel::granted("sxn-demo".into(), "scope".into());
+        let revoking = granted.begin_revoke().unwrap();
+        assert!(matches!(revoking.state, PermissionState::Revoking { .. }));
+        assert!(!revoking.can_revoke);
+        let completed = revoking.complete_revoke().unwrap();
+        assert_eq!(completed.state, PermissionState::None);
+        assert!(completed.can_grant);
+    }
+}
