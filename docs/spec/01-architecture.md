@@ -149,6 +149,11 @@ Unix 进程组或 Windows Job Object。取消/超时先终止再回收；父进�
 #46 的零缓存撤销 → 按请求检查 grant；#48 的 stderr 歧义 → 显式证据来源与完整性。
 这些前期实测不是完整 Agent、broker 或跨平台 E2E 的完成证明。
 
+宿主 capture 传输（[#96](https://github.com/gac0812/qn-sandbox/issues/96)）采用 snow 的标准
+Noise NNpsk0/25519/ChaChaPoly/SHA256，PSK 仅在宿主私有 binding；grant 句柄不作认证。
+请求及秘密响应均认证加密，consumer 仍负责会话/精确作用域与准入时撤销检查。
+该 broker 内部传输不新增 core Port，不代表生产 provider、审计或 WSL 桥已完成。
+
 ## 5. 数据流（两个代表场景）
 
 **场景 A：`qn run --agent claude-code`（P0 主路径）**

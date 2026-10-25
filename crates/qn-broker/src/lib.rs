@@ -22,3 +22,5 @@ pub use codex_config::write_codex_mcp_config;
 
 mod grants;
 pub use grants::{CaptureScope, GrantError, GrantRegistry};
+
+pub mod capture;
