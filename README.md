@@ -169,6 +169,37 @@ qn stop "$SESSION_ID"
 
 ---
 
+## 品牌元素
+
+玻璃屋里的 Agent，是 qn sandbox 的视觉标识。点击下方图形查看 SVG 源文件。
+
+<table align="center">
+  <tr>
+    <td align="center">
+      <a href="docs/brand/logo-icon.svg"><img src="docs/brand/logo-icon.svg" width="72" height="72" alt="qn sandbox 主图标"></a><br>
+      <sub>主图标</sub>
+    </td>
+    <td align="center">
+      <a href="docs/brand/logo-icon-dark.svg"><img src="docs/brand/logo-icon-dark.svg" width="72" height="72" alt="qn sandbox 深色图标"></a><br>
+      <sub>深色图标</sub>
+    </td>
+    <td align="center">
+      <a href="docs/brand/logo-icon-small.svg"><img src="docs/brand/logo-icon-small.svg" width="72" height="72" alt="qn sandbox 小尺寸优化图标"></a><br>
+      <sub>小尺寸版</sub>
+    </td>
+  </tr>
+</table>
+
+<p align="center">
+  <a href="docs/brand/logo-lockup.svg">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="docs/brand/logo-lockup-dark.svg">
+      <img src="docs/brand/logo-lockup.svg" width="320" alt="qn sandbox 横版字标">
+    </picture>
+  </a><br>
+  <a href="docs/brand/">完整素材与使用规范</a> · <a href="docs/brand/logo-1024.png">PNG 图标</a> · <a href="docs/brand/social-card.png">分享卡片</a>
+</p>
+
 <p align="center">
   <strong>关得住，也待得舒服。</strong><br>
   <sub>Safe by default. Comfortable by design.</sub><br><br>
