@@ -68,6 +68,8 @@ qn-nono / qn-wsl ──► 外部：nono 二进制、wsl.exe（经 qn-infra::pro
 
 - core 不回头依赖任何适配器；surfaces 不认识具体适配器（经 qn-bootstrap）；
   适配器互不依赖（公共逻辑下沉 core/infra）；无环 DAG。
+  **唯一例外（#188 裁决）**：`qn-wsl → qn-nono` 允许——安装器 staging 复用（锁版 + SHA256 + Linux target 工件，上游模块文档明示 qn-wsl 为消费方）；仅限 installer 家族，qn-nono 其余模块（runner/wire/audit）对 qn-wsl 仍禁止。
+  **唯一例外（#188 裁决）**：`qn-wsl → qn-nono` 允许——安装器 staging 复用（锁版 + SHA256 + Linux target 工件，上游模块文档明示 qn-wsl 为消费方）；仅限 installer 家族，qn-nono 其余模块（runner/wire/audit）对 qn-wsl 仍禁止。
 - **引擎可替换**是硬要求：`qn-nono` 是唯一驱动 nono CLI 的 crate；
   P2 的 qn-vm 将实现同一 port 实现强隔离模式切换。
 

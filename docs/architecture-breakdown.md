@@ -126,7 +126,7 @@ flowchart LR
 | qn-nono | ✓ | ✓ | ✓ | ✗ | —（自身） | ✗ | ✗ | ✗ | ✗ |
 | qn-broker | ✓ | ✓ | ✓ | ✗ | ✗ | — | ✗ | ✗ | ✗ |
 | qn-gateway | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | — | ✗ | ✗ |
-| qn-wsl | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | — | ✗ |
+| qn-wsl | ✓ | ✓ | ✓ | ✗ | ✓（#188 仅 installer） | ✗ | ✗ | ✗ | ✗ |
 | bootstrap | ✓ | ✓ | ✓ | — | ✓ | ✓ | ✓ | ✓ | ✗ |
 | daemon / cli / ui / mcp | ✓ | ✓ | ✓ | ✓ | ✗（经 bootstrap） | ✗ | ✗ | ✗ | — |
 
