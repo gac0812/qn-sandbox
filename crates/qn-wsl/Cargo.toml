@@ -10,6 +10,7 @@ description = "Windows WSL2 provisioning adapter for qn-sandbox (health probes f
 qn-config = { path = "../qn-config", version = "0.1.0" }
 qn-infra = { path = "../qn-infra", version = "0.1.0" }
 camino = "1"
+qn-nono = { path = "../qn-nono", version = "0.1.0" }
 thiserror = "2"
 
 [dev-dependencies]
@@ -17,8 +18,9 @@ thiserror = "2"
 tokio = { version = "1", features = ["rt", "macros", "rt-multi-thread"] }
 
 [features]
-# 真实供给集成测试（本机 opt-in，配合 QN_WSL_PROVISION_IT=1；CI 不启用）。
+# 真实供给/引导集成测试（本机 opt-in；CI 不启用）。
 provision-it = []
+bootstrap-it = []
 
 [lints]
 workspace = true
