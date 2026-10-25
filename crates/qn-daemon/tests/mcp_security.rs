@@ -34,7 +34,7 @@ fn invalid_arguments_return_closed_error_without_echoing_payload() {
             assert!(!message.contains(secret));
             assert!(!message.contains("/private/host"));
         }
-        other => panic!("unexpected outcome: {other:?}"),
+        other @ ToolOutcome::Ok { .. } => panic!("unexpected outcome: {other:?}"),
     }
 }
 
@@ -49,7 +49,7 @@ fn unknown_tool_is_rejected_without_argument_echo() {
             assert_eq!(code, ResultErrorCode::Failed);
             assert!(!message.contains("secret"));
         }
-        other => panic!("unexpected outcome: {other:?}"),
+        other @ ToolOutcome::Ok { .. } => panic!("unexpected outcome: {other:?}"),
     }
 }
 
@@ -64,6 +64,6 @@ async fn read_only_dispatch_returns_denial_for_mutating_tools() {
             assert_eq!(code, ResultErrorCode::Denied);
             assert!(!message.contains("token"));
         }
-        other => panic!("unexpected outcome: {other:?}"),
+        other @ ToolOutcome::Ok { .. } => panic!("unexpected outcome: {other:?}"),
     }
 }
