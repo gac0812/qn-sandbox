@@ -15,3 +15,7 @@ secret/identity variables and direct broker connections are denied. The exact jo
 and event order are verified. Test-only control TCP is not a product control-plane API.
 No real credentials or model calls. Windows/Intel/installed product and whole-tree cleanup
 remain unverified; #93 blocks production stop-success. Passing this suite is not full E2E.
+
+Build qn-cli for the complete journal-to-user path. All four native cases also invoke
+actual audit show/list/follow, check versioned JSON, source state, grant/denial filters and
+redaction. The exhausted journal remains open and its follower exits through Ctrl-C.
