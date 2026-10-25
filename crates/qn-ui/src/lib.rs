@@ -1108,3 +1108,119 @@ mod audit_model_tests {
         assert!(!encoded.contains("authenticated"));
     }
 }
+
+/// Maps a verified core profile summary into a safe Profiles view card.
+#[must_use]
+pub fn profile_card(summary: &qn_core::profile::ProfileSummary) -> ProfileCard {
+    ProfileCard {
+        id: summary.id().to_string(),
+        version: summary.version().to_string(),
+        source: match summary.source() {
+            qn_core::profile::ProfileSource::Builtin => "builtin".into(),
+            qn_core::profile::ProfileSource::Installed => "installed".into(),
+        },
+    }
+}
+
+/// Maps an owner-observed core session status into a safe Sessions view card.
+#[must_use]
+pub fn session_card(status: &qn_core::runtime::SessionStatus) -> SessionCard {
+    let phase = match status.phase() {
+        qn_core::runtime::RunPhase::Starting => "starting",
+        qn_core::runtime::RunPhase::Running => "running",
+        qn_core::runtime::RunPhase::ExitedObserved => "exited_observed",
+        qn_core::runtime::RunPhase::Failed => "failed",
+    };
+    SessionCard {
+        session: status.session().to_string(),
+        profile: status.profile().to_string(),
+        phase: phase.into(),
+        cleanup: "unconfirmed".into(),
+    }
+}
+
+/// Maps a bounded core audit timeline into a safe Audit view card.
+#[must_use]
+pub fn audit_card(timeline: &qn_core::audit::AuditTimeline) -> AuditCard {
+    let source = match timeline.source {
+        qn_core::audit::AuditSource::Broker => "broker",
+    };
+    let integrity = match timeline.integrity {
+        qn_core::audit::AuditIntegrity::Unverified => "unverified",
+    };
+    let state = match timeline.state {
+        qn_core::audit::JournalState::Empty => "empty",
+        qn_core::audit::JournalState::Open => "open",
+        qn_core::audit::JournalState::Partial => "partial",
+        qn_core::audit::JournalState::ObservedClosed => "observed_closed",
+    };
+    AuditCard {
+        session: timeline.session_id.to_string(),
+        source: source.into(),
+        integrity: integrity.into(),
+        state: state.into(),
+        event_count: timeline.events.len(),
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod mapping_tests {
+    use super::*;
+    use qn_core::{
+        ProfileRef, SessionId,
+        audit::{
+            AuditEvent, AuditEventKind, AuditIntegrity, AuditSource, AuditTimeline, JournalState,
+        },
+        profile::{ProfileSource, ProfileSummary, ProfileVersion},
+        runtime::{RunPhase, SessionStatus},
+    };
+
+    #[test]
+    fn maps_core_profile_summary_without_paths() {
+        let summary = ProfileSummary::new(
+            ProfileRef::try_from("qn/claude-code").unwrap(),
+            ProfileVersion::try_from("1.0.0").unwrap(),
+            ProfileSource::Builtin,
+        );
+        let card = profile_card(&summary);
+        assert_eq!(card.id, "qn/claude-code");
+        assert_eq!(card.source, "builtin");
+    }
+
+    #[test]
+    fn maps_core_session_status_with_unconfirmed_cleanup() {
+        let status = SessionStatus::new(
+            SessionId::new(),
+            ProfileRef::try_from("qn/claude-code").unwrap(),
+            RunPhase::Running,
+            None,
+            None,
+            None,
+        );
+        let card = session_card(&status);
+        assert_eq!(card.phase, "running");
+        assert_eq!(card.cleanup, "unconfirmed");
+    }
+
+    #[test]
+    fn maps_core_audit_timeline_with_integrity_and_event_count() {
+        let timeline = AuditTimeline {
+            session_id: SessionId::new(),
+            source: AuditSource::Broker,
+            integrity: AuditIntegrity::Unverified,
+            state: JournalState::Partial,
+            events: vec![AuditEvent {
+                sequence: 1,
+                wall_millis: 0,
+                elapsed_micros: 0,
+                event: AuditEventKind::Denied,
+            }],
+        };
+        let card = audit_card(&timeline);
+        assert_eq!(card.source, "broker");
+        assert_eq!(card.integrity, "unverified");
+        assert_eq!(card.state, "partial");
+        assert_eq!(card.event_count, 1);
+    }
+}
