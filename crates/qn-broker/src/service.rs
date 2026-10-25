@@ -117,7 +117,7 @@ impl CaptureService {
                 Ok(request) => {
                     self.route
                         .process(request, &self.grant, policy, cancel)
-                        .await?
+                        .await?;
                 }
                 Err(_) => record(&self.grant, BrokerEvent::Failed, cancel).await?,
             }
