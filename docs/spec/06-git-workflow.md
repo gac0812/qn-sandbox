@@ -5,7 +5,7 @@
 ## 1. 分支模型
 
 ```
-main                 # 始终可发布；保护：PR + CI 绿 + ≥1 人类 review（CONTRIBUTING 要求）
+main                 # 始终可发布；保护：PR +（CI 恢复后绿）+ ≥1 人类 review（CONTRIBUTING 要求）
 └── <type>/<issue>-<slug>   # 短生命周期（≤3 天），从最新 main 切出
     feat/4-credential-broker
     fix/12-wsl-kernel-detect
@@ -45,8 +45,8 @@ main                 # 始终可发布；保护：PR + CI 绿 + ≥1 人类 revi
 做了什么/为什么 → 设计取舍（重大决策附 issue 链接）→ 验证证据（命令+平台+结果+未覆盖项）→ 新依赖五问 → AGENTS §6 自检清单。
 
 ### 3.3 合并门禁
-- CI：`fmt / clippy / test（矩阵）/ deny` 全绿 + **触及安全机制必须附攻击演示子集通过证据**。
-  （CI 待 M0 骨架后接入，TODO-001；接入前以 PR 粘贴的本地记录代替）
+- CI：GitHub Actions 当前因 #145 暂停；恢复前，PR 必须附 `fmt / clippy / test / strict doc / architecture / deny` 的新鲜本地证据 + **触及安全机制必须附攻击演示子集通过证据**。
+  恢复 CI 需独立 PR、管理员确认资源并重新通过矩阵；恢复后以远程绿勾为准。
 - Review：≥1 人类 approve；横切线相关 PR 需对应负责人看过（nono 跟版→A / 安全→B / 架构→C）。
 - Review 重点顺序：**依赖方向与分层 → 安全边界 → 错误与边界 → 测试充分性 → 命名风格**。
 - review 意见未解决不合并；AI 有分歧给论据，仍分歧交用户裁决。

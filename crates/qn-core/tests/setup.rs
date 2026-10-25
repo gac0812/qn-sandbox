@@ -3,8 +3,8 @@
 use qn_core::setup::{EngineInstallation, EngineSetup, SetupError, SetupFuture, SetupOperation};
 use std::{
     error::Error,
-    sync::{Arc, Mutex},
-    task::{Context, Poll, Wake, Waker},
+    sync::Mutex,
+    task::{Context, Poll},
 };
 
 struct ReadySetup(Mutex<Vec<SetupOperation>>);
@@ -23,11 +23,6 @@ impl EngineSetup for ReadySetup {
         })
     }
 }
-struct NoopWake;
-impl Wake for NoopWake {
-    fn wake(self: Arc<Self>) {}
-}
-
 #[test]
 fn it_dispatches_operations_through_a_sendable_borrowed_trait_future() {
     let setup = ReadySetup(Mutex::new(Vec::new()));
@@ -37,8 +32,8 @@ fn it_dispatches_operations_through_a_sendable_borrowed_trait_future() {
         let result = std::thread::scope(|scope| {
             scope
                 .spawn(move || {
-                    let waker = Waker::from(Arc::new(NoopWake));
-                    future.as_mut().poll(&mut Context::from_waker(&waker))
+                    let waker = std::task::Waker::noop();
+                    future.as_mut().poll(&mut Context::from_waker(waker))
                 })
                 .join()
                 .unwrap()
