@@ -23,6 +23,7 @@ pub enum LifecycleError {
 struct Evidence {
     journal: BrokerJournal,
     revoked: bool,
+    closed: bool,
 }
 struct Owner {
     registry: Arc<GrantRegistry>,
@@ -81,6 +82,7 @@ impl AuditedGrant {
             evidence: Mutex::new(Evidence {
                 journal,
                 revoked: false,
+                closed: false,
             }),
             failed: CancellationToken::new(),
         }));
@@ -94,6 +96,18 @@ impl AuditedGrant {
         self.0
             .registry
             .authorize(self.0.handle, self.0.session, scope)
+    }
+    pub(crate) fn admit<T>(
+        &self,
+        scope: &CaptureScope,
+        deliver: impl FnOnce() -> T,
+    ) -> Result<T, GrantError> {
+        self.0
+            .registry
+            .with_authorization(self.0.handle, self.0.session, scope, deliver)
+    }
+    pub(crate) fn failure(&self) -> CancellationToken {
+        self.0.failed.clone()
     }
     pub(crate) fn invalidate(&self) -> Result<(), GrantError> {
         let result = self.0.registry.revoke(self.0.handle, self.0.session);
@@ -125,7 +139,13 @@ impl AuditedGrant {
             guard.acknowledged = true;
             return Ok(());
         }
+        if evidence.closed {
+            return Err(AuditError::Unavailable);
+        }
         evidence.journal.record(event).await?;
+        if event == BrokerEvent::ServiceClosed {
+            evidence.closed = true;
+        }
         if event == BrokerEvent::GrantRevoked {
             evidence.revoked = true;
         }

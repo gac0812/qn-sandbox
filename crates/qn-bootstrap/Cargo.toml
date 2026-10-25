@@ -29,5 +29,9 @@ harness = false
 name = "host_provider"
 harness = false
 
+[[test]]
+name = "capture_service"
+harness = false
+
 [lints]
 workspace = true

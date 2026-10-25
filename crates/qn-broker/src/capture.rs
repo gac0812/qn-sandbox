@@ -158,6 +158,9 @@ pub struct CaptureRequest {
     deadline: Instant,
 }
 impl CaptureRequest {
+    pub(crate) fn deadline(&self) -> Instant {
+        self.deadline
+    }
     /// Untrusted metadata: validate the bound session, exact scope and live grant.
     #[must_use]
     pub fn payload(&self) -> &[u8] {
