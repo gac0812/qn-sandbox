@@ -12,6 +12,7 @@ Windows-only：crate 根整体 cfg 门，Linux/macOS 只编译不执行。
 | `kernel` | `uname -r` 解析（非严格 semver）+ ≥6.7 Landlock 网络下限判定 + ABI floor 映射（[内核文档](https://docs.kernel.org/userspace-api/landlock.html) + spike① 实测校准） | ✅ |
 | `distro` | 受管发行版幂等供给：三态纯函数计划（`plan_provision`）+ 编排执行（`ensure_present`）；种子策略 Ubuntu-24.04，**仅自装种子才 unregister** | ✅ M2（#85） |
 | `bootstrap` / kernel 升级 | 发行版内 nono 引导 / 内核升级 | ⏳ 后续 issue（kernel 等 #17 裁决） |
+: add bootstrap module - in-distro nono via host-side staging)
 
 ## 关键事实（探测语义依据）
 

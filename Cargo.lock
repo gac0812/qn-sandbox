@@ -952,6 +952,7 @@ dependencies = [
  "camino",
  "qn-config",
  "qn-infra",
+ "qn-nono",
  "thiserror",
  "tokio",
 ]
