@@ -176,3 +176,24 @@ macOS arm64 真机回归（私有测试父目录建议建在 /Users/Shared 下�
 拿到精确代理地址；占用端口时 child sentinel 不存在，已有 listener 和合成上游均
 无连接。provider 固定拒绝且无真实凭证，不调用模型。命令经 infra 限时/限量执行。
 Windows/WSL/Intel 原生行为未验证；#93 全执行树清理、在线 profiles 与生产组合仍独立跟踪。
+
+## 受管前台生命周期契约（#81）
+
+macOS/Linux 安装 `/usr/bin/ruby`，先核对 nono 归档与安装器 manifest 的 SHA-256，
+再确认二进制与归档一致。在 `/Users/Shared`（macOS）或专用测试根（Linux）创建私有空目录，运行：
+
+```sh
+QN_TEST_NONO=/verified/nono QN_TEST_PROFILE_PARENT=/private/probe-parent cargo test --locked -p qn-nono --test managed_contract -- --ignored
+```
+
+测试创建独立 HOME/XDG/project，严格校验策略，经 infra + process-wrap 前台运行；网络只给
+合成后代一个 loopback 端口用于就绪/关闭证据。正常退出、取消、超时均检查；清理失败时仅通过
+已建立连接让测试后代退出（另有 12 秒自退出期限），不补杀未经身份保护的 PID。
+此结果不证明任意脱离进程组后代、detached supervisor、Windows/WSL 或完整 Agent E2E 的清理。
+
+2026-10-25 集成 #92 进一步发现：即使后代未主动脱组，只要关闭继承的 stdio 并让父进程退出，
+受管 wait 也可能返回 Exited(0)，后代仍可执行。新增
+`it_demonstrates_parent_exit_is_not_descendant_cleanup` 在父进程成功退出后才向已建立的
+合成后代连接发送探针，确认应答后关闭；通过表示复现此限制，**不是清理通过**。
+因此生产 runner 不得把 ManagedOutput/原生 Exited 直接映射为 core Stopped；需先解决 #92 的
+后代所有权/终止证明。测试不给沙箱额外文件权限、不按数字 PID 补杀；无真实凭证或外部网络。
