@@ -19,6 +19,14 @@ use crate::NonoError;
 #[derive(Clone, PartialEq, Eq)]
 pub struct NonoSessionId(String);
 
+impl NonoSessionId {
+    /// Borrow the full native identifier for trusted host routing, never authentication.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 impl TryFrom<&str> for NonoSessionId {
     type Error = NonoError;
 
