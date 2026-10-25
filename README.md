@@ -17,7 +17,7 @@
   <img alt="使用 Rust 构建" src="https://img.shields.io/badge/built_with-Rust-5B6B7C?style=flat-square">
 </p>
 
-[快速开始](#快速开始) · [当前进展](#当前进展) · [设计与安全](#设计与安全) · [开发文档](#开发文档)
+[快速开始](#快速开始) · [进展](#当前进展) · [安全](#设计与安全) · [文档](#开发文档)
 
 </div>
 
