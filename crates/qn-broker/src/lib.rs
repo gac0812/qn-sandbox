@@ -26,4 +26,6 @@ pub use grants::{CaptureScope, GrantError, GrantRegistry};
 pub mod audit;
 pub mod capture;
 pub mod identity;
+mod lifecycle;
 pub mod provider;
+pub use lifecycle::{AuditedGrant, LifecycleError};

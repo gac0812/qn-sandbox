@@ -132,3 +132,10 @@ An unacknowledged partial or complete record may remain and must be treated as u
 This supplemental source is broker, not nono audit, and does not claim tamper evidence.
 Native nono audit remains authoritative for native decisions. Query/rotation and capture-service
 composition are pending; passing journal tests is not full Agent/Windows/security-path acceptance.
+
+## Audited grant ownership (#147 / #119)
+
+AuditedGrant::issue returns only after GrantIssued is durable; revoke invalidates before
+journal IO and acknowledges GrantRevoked once. Failed/cancelled creation releases capacity;
+last-owner Drop invalidates without claiming durable evidence. Journal lock wait: 30 seconds.
+Pending: service #107, query projection #119, native attack acceptance and tree cleanup #93.
