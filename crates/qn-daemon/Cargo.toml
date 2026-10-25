@@ -12,5 +12,9 @@ qn-core = { path = "../qn-core", version = "0.1.0" }
 thiserror = "2"
 tokio-util = "0.7"
 
+[dev-dependencies]
+camino = "1"
+tempfile = "3"
+
 [lints]
 workspace = true
