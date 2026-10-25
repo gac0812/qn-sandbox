@@ -34,7 +34,7 @@ async fn profile_list_is_read_only_and_correlated() {
             assert_eq!(value["profiles"].as_array().unwrap().len(), 2);
             assert!(!value.to_string().contains("secret"));
         }
-        other => panic!("unexpected outcome: {other:?}"),
+        other @ ToolOutcome::Error { .. } => panic!("unexpected outcome: {other:?}"),
     }
     assert!(!root.path().join("runtime").exists());
 }
@@ -64,7 +64,7 @@ async fn profile_show_and_status_validate_arguments_without_raw_echo() {
             assert_eq!(code, ResultErrorCode::InvalidArguments);
             assert!(!message.contains("secret"));
         }
-        other => panic!("unexpected outcome: {other:?}"),
+        other @ ToolOutcome::Ok { .. } => panic!("unexpected outcome: {other:?}"),
     }
 }
 
@@ -84,6 +84,6 @@ async fn audit_query_missing_source_is_a_safe_failure() {
             assert!(message.contains("audit journal"));
             assert!(!message.contains(root.path().to_str().unwrap()));
         }
-        other => panic!("unexpected outcome: {other:?}"),
+        other @ ToolOutcome::Ok { .. } => panic!("unexpected outcome: {other:?}"),
     }
 }
