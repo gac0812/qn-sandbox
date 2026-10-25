@@ -9,7 +9,9 @@ use serde_json::{Value, json};
 
 fn doctor(home: &Path) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_qn"));
-    command.args(["doctor", "--json"]).env("QN_HOME", home);
+    command
+        .args(["doctor", "--json", "--config-only"])
+        .env("QN_HOME", home);
     command.env_remove("QN_DEFAULT_TIMEOUT_MS");
     command
 }

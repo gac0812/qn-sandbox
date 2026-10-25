@@ -48,3 +48,17 @@ pub fn profile_registry(
 ) -> Result<impl qn_core::profile::ProfileRegistry, qn_core::profile::ProfileError> {
     qn_nono::registry::HostProfileRegistry::new(paths.profiles.clone())
 }
+
+/// Assemble the pinned native installer/inspector under the resolved cache root.
+///
+/// # Errors
+/// Rejects invalid cache roots and hosts requiring managed WSL2 installation.
+///
+///     let paths = qn_config::paths::QnPaths::from_root("/tmp/qn");
+///     let setup = qn_bootstrap::engine_setup(&paths);
+///
+pub fn engine_setup(
+    paths: &qn_config::paths::QnPaths,
+) -> Result<impl qn_core::setup::EngineSetup, qn_core::setup::SetupError> {
+    qn_nono::setup::NonoSetup::new(&paths.engine_cache())
+}

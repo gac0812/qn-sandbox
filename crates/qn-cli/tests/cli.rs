@@ -19,7 +19,9 @@ fn qn() -> Command {
 
 fn doctor(home: &TestDir) -> Output {
     let mut command = qn();
-    command.arg("doctor").env("QN_HOME", home.path());
+    command
+        .args(["doctor", "--config-only"])
+        .env("QN_HOME", home.path());
     command.output().expect("qn doctor should execute")
 }
 
@@ -147,7 +149,7 @@ fn it_doctors_an_empty_qn_home_with_defaults() {
         "doctor should report the built-in timeout: {stdout}"
     );
     assert!(
-        stdout.contains("sandbox engine: not checked (qn-nono integration pending)"),
+        stdout.contains("sandbox engine: not checked (configuration-only mode)"),
         "doctor must not imply that the sandbox engine is ready: {stdout}"
     );
 }
@@ -159,7 +161,7 @@ fn it_applies_environment_overrides_in_doctor() {
         .expect("config file should be written");
 
     let output = qn()
-        .arg("doctor")
+        .args(["doctor", "--config-only"])
         .env("QN_HOME", home.path())
         .env("QN_DEFAULT_TIMEOUT_MS", "7000")
         .output()
@@ -232,7 +234,7 @@ fn it_hides_config_values_from_type_errors() {
 #[test]
 fn it_rejects_non_utf8_qn_home_without_echoing_invalid_bytes() {
     let output = qn()
-        .arg("doctor")
+        .args(["doctor", "--config-only"])
         .env(
             "QN_HOME",
             OsString::from_vec(vec![b'/', b't', b'm', b'p', 0xff]),
@@ -248,7 +250,7 @@ fn it_rejects_non_utf8_qn_home_without_echoing_invalid_bytes() {
 fn it_rejects_non_utf8_timeout_override_without_echoing_invalid_bytes() {
     let home = TestDir::new("non-utf8-timeout");
     let output = qn()
-        .arg("doctor")
+        .args(["doctor", "--config-only"])
         .env("QN_HOME", home.path())
         .env(
             "QN_DEFAULT_TIMEOUT_MS",

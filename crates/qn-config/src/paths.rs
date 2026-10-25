@@ -56,6 +56,15 @@ pub fn platform_default_root() -> Option<Utf8PathBuf> {
 }
 
 impl QnPaths {
+    /// Managed engine cache namespace; the adapter adds target and pinned version.
+    ///
+    ///     let paths = qn_config::paths::QnPaths::from_root("/tmp/qn");
+    ///     assert_eq!(paths.engine_cache(), paths.cache.join("nono"));
+    #[must_use]
+    pub fn engine_cache(&self) -> Utf8PathBuf {
+        self.cache.join("nono")
+    }
+
     /// 以给定根目录构造全部标准路径。
     #[must_use]
     pub fn from_root(root: impl Into<Utf8PathBuf>) -> Self {

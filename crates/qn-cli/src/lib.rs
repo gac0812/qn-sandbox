@@ -11,6 +11,7 @@ use qn_config::Config;
 use qn_config::paths::QnPaths;
 
 mod profile;
+mod setup;
 pub use profile::ProfileCommand;
 
 /// Parsed command-line invocation for the `qn` executable.
@@ -25,12 +26,14 @@ pub struct Cli {
 /// User-facing commands available in this CLI slice.
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Check local configuration and show unresolved prerequisites.
+    /// Install or repair the pinned engine, then verify its version.
+    Install,
+    /// Check configuration and the integrity/version of the managed engine.
     Doctor {
-        /// Emit a versioned JSON configuration report with safe display paths.
+        /// Emit versioned JSON diagnostics with safe display paths.
         #[arg(long)]
         json: bool,
-        /// Restrict diagnostics to configuration checks for future engine-aware doctor modes.
+        /// Check only configuration, without inspecting or executing the engine.
         #[arg(long)]
         config_only: bool,
     },
@@ -46,6 +49,9 @@ pub enum Command {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
+    /// Engine installation or read-only integrity/version inspection failed.
+    #[error(transparent)]
+    Setup(#[from] qn_core::setup::SetupError),
     /// Invalid typed identifier; source never echoes user input.
     #[error(transparent)]
     Domain(#[from] qn_core::Error),
@@ -82,6 +88,11 @@ pub enum Error {
 /// writing diagnostics fails.
 pub fn run(cli: &Cli, output: &mut dyn Write) -> Result<(), Error> {
     match &cli.command {
+        Command::Install => {
+            let paths = QnPaths::resolve()?;
+            let installation = setup::inspect(qn_core::setup::SetupOperation::Install, &paths)?;
+            setup::render(&installation, output)
+        }
         Command::Doctor { json, config_only } => doctor(output, *json, *config_only),
         Command::Profile { command } => profile::run(command, output),
     }
@@ -275,13 +286,23 @@ struct DoctorReport {
     command_timeout_ms: u64,
     sandbox_engine: &'static str,
     configuration: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    engine: Option<setup::EngineReport>,
 }
 
-fn doctor(output: &mut dyn Write, json: bool, _config_only: bool) -> Result<(), Error> {
+fn doctor(output: &mut dyn Write, json: bool, config_only: bool) -> Result<(), Error> {
     let paths = QnPaths::resolve()?;
     let config_file_exists = paths.config_file.exists();
     let config = Config::load(&paths)?.apply_env_overrides()?;
     let timeout_ms = u64::try_from(config.command_timeout().as_millis()).unwrap_or(u64::MAX);
+    let installation = if config_only {
+        None
+    } else {
+        Some(setup::inspect(
+            qn_core::setup::SetupOperation::Inspect,
+            &paths,
+        )?)
+    };
 
     if json {
         let report = DoctorReport {
@@ -294,8 +315,13 @@ fn doctor(output: &mut dyn Write, json: bool, _config_only: bool) -> Result<(), 
                 "defaults"
             },
             command_timeout_ms: timeout_ms,
-            sandbox_engine: "not_checked",
+            sandbox_engine: if installation.is_some() {
+                "binary_verified"
+            } else {
+                "not_checked"
+            },
             configuration: "ok",
+            engine: installation.as_ref().map(setup::EngineReport::from),
         };
         // Encode first so configuration/serialization failures cannot publish a partial report.
         let encoded = serde_json::to_string(&report)?;
@@ -320,10 +346,14 @@ fn doctor(output: &mut dyn Write, json: bool, _config_only: bool) -> Result<(), 
         writeln!(output, "config source: defaults (file not found)")?;
     }
     writeln!(output, "command timeout: {timeout_ms} ms")?;
-    writeln!(
-        output,
-        "sandbox engine: not checked (qn-nono integration pending)"
-    )?;
+    if let Some(installation) = installation {
+        setup::render(&installation, output)?;
+    } else {
+        writeln!(
+            output,
+            "sandbox engine: not checked (configuration-only mode)"
+        )?;
+    }
     writeln!(output, "configuration: OK")?;
 
     Ok(())
